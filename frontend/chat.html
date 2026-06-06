@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="light-theme">
+<body>
     <div class="chat-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
@@ -26,10 +26,10 @@
                     </div>
                 </div>
                 <div class="sidebar-actions">
-                    <button id="themeToggleSidebar" class="icon-btn">
+                    <button id="themeToggleSidebar" class="icon-btn" title="Changer de thème (Ctrl+Shift+D)">
                         <i class="fas fa-moon"></i>
                     </button>
-                    <button id="logoutBtn" class="icon-btn">
+                    <button id="logoutBtn" class="icon-btn logout-btn" title="Déconnexion">
                         <i class="fas fa-sign-out-alt"></i>
                     </button>
                 </div>
@@ -37,11 +37,13 @@
 
             <div class="users-list-header">
                 <i class="fas fa-users"></i>
-                <h4>Contacts en ligne</h4>
+                <h4>Contacts</h4>
             </div>
 
             <div class="users-list" id="usersList">
-                <!-- Liste des utilisateurs chargée dynamiquement -->
+                <div class="loading-users">
+                    <i class="fas fa-spinner fa-spin"></i> Chargement...
+                </div>
             </div>
         </aside>
 
@@ -58,6 +60,11 @@
                             <i class="fas fa-circle"></i> Hors ligne
                         </span>
                     </div>
+                </div>
+                <div class="chat-actions">
+                    <button id="menuToggle" class="icon-btn mobile-only" style="display: none;">
+                        <i class="fas fa-bars"></i>
+                    </button>
                 </div>
             </div>
 
@@ -76,17 +83,38 @@
                         rows="1"
                         maxlength="500"
                     ></textarea>
-                    <button id="sendMessageBtn" class="send-btn">
+                    <button id="sendMessageBtn" class="send-btn" title="Envoyer (Entrée)">
                         <i class="fas fa-paper-plane"></i>
                     </button>
+                </div>
+                <div class="input-hint">
+                    <small>Appuyez sur Entrée pour envoyer</small>
                 </div>
             </div>
         </main>
     </div>
 
+    <!-- Modal de confirmation de déconnexion -->
+    <div id="logoutModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fas fa-sign-out-alt"></i>
+                <h3>Déconnexion</h3>
+            </div>
+            <div class="modal-body">
+                <p>Êtes-vous sûr de vouloir vous déconnecter ?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelLogoutBtn" class="btn-secondary">Annuler</button>
+                <button id="confirmLogoutBtn" class="btn-danger">Se déconnecter</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/supabase-js@2"></script>
+    <script src="local-api.js"></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <script src="chat.js"></script>
 </body>
 </html>
