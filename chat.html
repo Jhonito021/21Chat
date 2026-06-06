@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>ChatApp - Messages</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#e94560">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="light-theme">
+    <div class="chat-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="user-info">
+                    <div class="avatar" id="userAvatar">
+                        <i class="fas fa-user-circle"></i>
+                    </div>
+                    <div class="user-details">
+                        <h3 id="currentUsername">Chargement...</h3>
+                        <span class="user-status online">
+                            <i class="fas fa-circle"></i> En ligne
+                        </span>
+                    </div>
+                </div>
+                <div class="sidebar-actions">
+                    <button id="themeToggleSidebar" class="icon-btn">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button id="logoutBtn" class="icon-btn">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="users-list-header">
+                <i class="fas fa-users"></i>
+                <h4>Contacts en ligne</h4>
+            </div>
+
+            <div class="users-list" id="usersList">
+                <!-- Liste des utilisateurs chargée dynamiquement -->
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <div class="chat-header" id="chatHeader" style="display: none;">
+                <div class="chat-user-info">
+                    <div class="avatar small">
+                        <i class="fas fa-user-circle"></i>
+                    </div>
+                    <div>
+                        <h3 id="chatUsername">Sélectionnez un contact</h3>
+                        <span class="user-status" id="chatUserStatus">
+                            <i class="fas fa-circle"></i> Hors ligne
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="messages-container" id="messagesContainer">
+                <div class="no-chat-selected">
+                    <i class="fas fa-comments"></i>
+                    <p>Sélectionnez un ami pour commencer à discuter</p>
+                </div>
+            </div>
+
+            <div class="chat-input-container" id="chatInput" style="display: none;">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="messageInput" 
+                        placeholder="Écrivez votre message..." 
+                        rows="1"
+                        maxlength="500"
+                    ></textarea>
+                    <button id="sendMessageBtn" class="send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/supabase-js@2"></script>
+    <script src="chat.js"></script>
+</body>
+</html>
