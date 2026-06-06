@@ -7,6 +7,10 @@ class LocalAPI {
         this.onNewMessage = null;
         this.onUserTyping = null;
         
+        if (typeof io === 'undefined') {
+            console.warn('⚠️ Socket.IO non chargé, les fonctionnalités temps réel seront limitées');
+        }
+        
         if (this.token) {
             this.initSocket();
         }
@@ -55,63 +59,117 @@ class LocalAPI {
     }
     
     initSocket() {
+        if (typeof io === 'undefined') {
+            console.error(' Socket.IO non disponible');
+            return;
+        }
+        
         if (this.socket) {
             this.socket.disconnect();
         }
         
-        this.socket = io('http://localhost:3000', {
-            auth: { token: this.token }
-        });
-        
-        this.socket.on('connect', () => {
-            console.log('✅ Socket connecté');
-        });
-        
-        this.socket.on('new_message', (message) => {
-            if (this.onNewMessage) {
-                this.onNewMessage(message);
-            }
-        });
-        
-        this.socket.on('user_typing', (data) => {
-            if (this.onUserTyping) {
-                this.onUserTyping(data);
-            }
-        });
-        
-        this.socket.on('disconnect', () => {
-            console.log('❌ Socket déconnecté');
-        });
+        try {
+            this.socket = io('http://localhost:3000', {
+                auth: { token: this.token },
+                transports: ['websocket', 'polling']
+            });
+            
+            this.socket.on('connect', () => {
+                console.log(' Socket connecté');
+            });
+            
+            this.socket.on('new_message', (message) => {
+                if (this.onNewMessage) {
+                    this.onNewMessage(message);
+                }
+            });
+            
+            this.socket.on('user_typing', (data) => {
+                if (this.onUserTyping) {
+                    this.onUserTyping(data);
+                }
+            });
+            
+            this.socket.on('disconnect', () => {
+                console.log('🔌 Socket déconnecté');
+            });
+            
+            this.socket.on('connect_error', (error) => {
+                console.error(' Erreur de connexion socket:', error);
+            });
+        } catch (error) {
+            console.error(' Erreur initialisation socket:', error);
+        }
+    }
+    
+    async getCurrentUser() {
+        try {
+            const response = await fetch(`${this.baseUrl}/me`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            return response.json();
+        } catch (error) {
+            console.error('Erreur getCurrentUser:', error);
+            return { error: error.message };
+        }
     }
     
     async getUsers() {
-        const response = await fetch(`${this.baseUrl}/users`, {
-            headers: { 'Authorization': `Bearer ${this.token}` }
-        });
-        return response.json();
+        try {
+            const response = await fetch(`${this.baseUrl}/users`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            return response.json();
+        } catch (error) {
+            console.error('Erreur getUsers:', error);
+            return { error: error.message };
+        }
     }
     
     async getMessages(userId) {
-        const response = await fetch(`${this.baseUrl}/messages/${userId}`, {
-            headers: { 'Authorization': `Bearer ${this.token}` }
-        });
-        return response.json();
+        try {
+            const response = await fetch(`${this.baseUrl}/messages/${userId}`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            return response.json();
+        } catch (error) {
+            console.error('Erreur getMessages:', error);
+            return { error: error.message };
+        }
     }
     
     async sendMessage(receiverId, message) {
-        const response = await fetch(`${this.baseUrl}/messages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.token}`
-            },
-            body: JSON.stringify({ receiver_id: receiverId, message })
-        });
-        return response.json();
+        try {
+            const response = await fetch(`${this.baseUrl}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ receiver_id: receiverId, message })
+            });
+            return response.json();
+        } catch (error) {
+            console.error('Erreur sendMessage:', error);
+            return { error: error.message };
+        }
+    }
+    
+    async markMessagesAsRead(userId) {
+        try {
+            const response = await fetch(`${this.baseUrl}/messages/read/${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            return response.json();
+        } catch (error) {
+            console.error('Erreur markMessagesAsRead:', error);
+            return { error: error.message };
+        }
     }
     
     sendTyping(receiverId, isTyping) {
-        if (this.socket) {
+        if (this.socket && this.socket.connected) {
             this.socket.emit('typing', { receiver_id: receiverId, is_typing: isTyping });
         }
     }
@@ -137,5 +195,14 @@ class LocalAPI {
     }
 }
 
-// Initialiser l'API
-window.api = new LocalAPI();
+let api = null;
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        api = new LocalAPI();
+        window.api = api;
+    });
+} else {
+    api = new LocalAPI();
+    window.api = api;
+}

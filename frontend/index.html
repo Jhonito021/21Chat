@@ -71,8 +71,9 @@
 
     <div id="toast" class="toast"></div>
     
-    <script src="local-api.js"></script>
+    <!-- ⚠️ ORDRE IMPORTANT : Socket.IO d'abord, puis local-api.js, puis script.js -->
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="local-api.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

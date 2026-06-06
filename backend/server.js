@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const mysql = require('mysql2');
+const { createClient } = require('@supabase/supabase-js');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const http = require('http');
@@ -21,47 +21,13 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 
-// Configuration MySQL
-const db = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'chatapp',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
-
-const promiseDb = db.promise();
+// Configuration Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'mon_secret_jwt_pour_chatapp_2024';
-
-// Initialisation de la base de données
-async function initDatabase() {
-  try {
-    // Vérifier si la table users existe
-    const [tables] = await promiseDb.query("SHOW TABLES LIKE 'users'");
-    
-    if (tables.length === 0) {
-      const fs = require('fs');
-      const sql = fs.readFileSync('./database.sql', 'utf8');
-      const queries = sql.split(';').filter(q => q.trim());
-      
-      for (const query of queries) {
-        if (query.trim()) {
-          await promiseDb.query(query);
-        }
-      }
-      console.log('✅ Base de données MySQL initialisée');
-    } else {
-      console.log('✅ Base de données MySQL déjà existante');
-    }
-  } catch (error) {
-    console.error('Erreur initialisation DB:', error);
-  }
-}
 
 // Middleware d'authentification
 const authenticateToken = async (req, res, next) => {
@@ -87,22 +53,31 @@ app.post('/api/signup', async (req, res) => {
   const { username, email, password } = req.body;
   
   try {
-    const [existing] = await promiseDb.query(
-      'SELECT id FROM users WHERE email = ? OR username = ?',
-      [email, username]
-    );
+    // Vérifier si l'utilisateur existe déjà
+    const { data: existing, error: checkError } = await supabase
+      .from('users')
+      .select('id')
+      .or(`email.eq.${email},username.eq.${username}`);
     
-    if (existing.length > 0) {
+    if (existing && existing.length > 0) {
       return res.status(400).json({ error: 'Email ou nom d\'utilisateur déjà utilisé' });
     }
     
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
     
-    await promiseDb.query(
-      'INSERT INTO users (id, username, email, password, is_online) VALUES (?, ?, ?, ?, ?)',
-      [userId, username, email, hashedPassword, 1]
-    );
+    const { data: user, error: insertError } = await supabase
+      .from('users')
+      .insert([{ 
+        id: userId, 
+        username, 
+        email, 
+        password: hashedPassword, 
+        is_online: true 
+      }])
+      .select();
+    
+    if (insertError) throw insertError;
     
     const token = jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' });
     
@@ -122,12 +97,12 @@ app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   
   try {
-    const [users] = await promiseDb.query(
-      'SELECT * FROM users WHERE email = ?',
-      [email]
-    );
+    const { data: users, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email);
     
-    if (users.length === 0) {
+    if (findError || !users || users.length === 0) {
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
     
@@ -138,10 +113,11 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
     
-    await promiseDb.query(
-      'UPDATE users SET is_online = 1, last_seen = NOW() WHERE id = ?',
-      [user.id]
-    );
+    // Mettre à jour le statut en ligne
+    await supabase
+      .from('users')
+      .update({ is_online: true, last_seen: new Date() })
+      .eq('id', user.id);
     
     const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '7d' });
     
@@ -156,14 +132,36 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Récupérer l'utilisateur courant
+app.get('/api/me', authenticateToken, async (req, res) => {
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, username, email, is_online, last_seen')
+      .eq('id', req.userId);
+    
+    if (error || !users || users.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+    
+    res.json(users[0]);
+  } catch (error) {
+    console.error('Erreur get me:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Récupérer les utilisateurs
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
-    const [users] = await promiseDb.query(
-      'SELECT id, username, email, is_online, last_seen FROM users WHERE id != ? ORDER BY is_online DESC, username ASC',
-      [req.userId]
-    );
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, username, email, is_online, last_seen')
+      .neq('id', req.userId)
+      .order('is_online', { ascending: false })
+      .order('username', { ascending: true });
     
+    if (error) throw error;
     res.json(users);
   } catch (error) {
     console.error('Erreur get users:', error);
@@ -176,14 +174,13 @@ app.get('/api/messages/:userId', authenticateToken, async (req, res) => {
   const otherUserId = req.params.userId;
   
   try {
-    const [messages] = await promiseDb.query(
-      `SELECT * FROM messages 
-       WHERE (sender_id = ? AND receiver_id = ?) 
-          OR (sender_id = ? AND receiver_id = ?)
-       ORDER BY created_at ASC`,
-      [req.userId, otherUserId, otherUserId, req.userId]
-    );
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${req.userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${req.userId})`)
+      .order('created_at', { ascending: true });
     
+    if (error) throw error;
     res.json(messages);
   } catch (error) {
     console.error('Erreur get messages:', error);
@@ -196,21 +193,44 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
   const { receiver_id, message } = req.body;
   
   try {
-    const [result] = await promiseDb.query(
-      'INSERT INTO messages (sender_id, receiver_id, message, created_at) VALUES (?, ?, ?, NOW())',
-      [req.userId, receiver_id, message]
-    );
+    const { data: newMessage, error } = await supabase
+      .from('messages')
+      .insert([{ 
+        sender_id: req.userId, 
+        receiver_id, 
+        message,
+        created_at: new Date()
+      }])
+      .select()
+      .single();
     
-    const [newMessage] = await promiseDb.query(
-      'SELECT * FROM messages WHERE id = ?',
-      [result.insertId]
-    );
+    if (error) throw error;
     
-    io.to(receiver_id).emit('new_message', newMessage[0]);
+    io.to(receiver_id).emit('new_message', newMessage);
     
-    res.json({ success: true, id: result.insertId });
+    res.json({ success: true, id: newMessage.id });
   } catch (error) {
     console.error('Erreur send message:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Marquer les messages comme lus
+app.post('/api/messages/read/:userId', authenticateToken, async (req, res) => {
+  const otherUserId = req.params.userId;
+  
+  try {
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .eq('sender_id', otherUserId)
+      .eq('receiver_id', req.userId)
+      .eq('is_read', false);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur mark read:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
@@ -218,17 +238,18 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
 // Déconnexion
 app.post('/api/logout', authenticateToken, async (req, res) => {
   try {
-    await promiseDb.query(
-      'UPDATE users SET is_online = 0, last_seen = NOW() WHERE id = ?',
-      [req.userId]
-    );
+    await supabase
+      .from('users')
+      .update({ is_online: false, last_seen: new Date() })
+      .eq('id', req.userId);
+    
     res.json({ success: true });
   } catch (error) {
     res.json({ success: true });
   }
 });
 
-// Socket.IO
+// Socket.IO - reste identique
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (token) {
@@ -245,7 +266,7 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('✅ Utilisateur connecté:', socket.userId);
+  console.log('🔌 Utilisateur connecté:', socket.userId);
   
   socket.join(socket.userId);
   
@@ -257,13 +278,13 @@ io.on('connection', (socket) => {
   });
   
   socket.on('disconnect', async () => {
-    console.log('❌ Utilisateur déconnecté:', socket.userId);
+    console.log('🔌 Utilisateur déconnecté:', socket.userId);
     if (socket.userId) {
       try {
-        await promiseDb.query(
-          'UPDATE users SET is_online = 0, last_seen = NOW() WHERE id = ?',
-          [socket.userId]
-        );
+        await supabase
+          .from('users')
+          .update({ is_online: false, last_seen: new Date() })
+          .eq('id', socket.userId);
       } catch(e) {}
     }
   });
@@ -271,7 +292,6 @@ io.on('connection', (socket) => {
 
 // Démarrer le serveur
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, async () => {
-  await initDatabase();
-  console.log(`🚀 Serveur MySQL démarré sur http://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`🚀 Serveur Supabase démarré sur http://localhost:${PORT}`);
 });

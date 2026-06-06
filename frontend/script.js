@@ -1,5 +1,14 @@
 // script.js - Page de connexion
 (function() {
+    // Attendre que l'API soit prête
+    function waitForApi(callback) {
+        if (window.api) {
+            callback();
+        } else {
+            setTimeout(() => waitForApi(callback), 100);
+        }
+    }
+    
     // Gestion du thème
     function initTheme() {
         try {
@@ -44,9 +53,11 @@
 
     // Vérifier si déjà connecté
     async function checkAuth() {
-        if (window.api && window.api.isAuthenticated()) {
-            window.location.href = 'chat.html';
-        }
+        waitForApi(async () => {
+            if (window.api && window.api.isAuthenticated()) {
+                window.location.href = 'chat.html';
+            }
+        });
     }
 
     // Initialisation
@@ -93,6 +104,10 @@
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connexion...';
             
             try {
+                if (!window.api) {
+                    throw new Error('API non initialisée');
+                }
+                
                 const result = await window.api.signIn(email, password);
                 
                 if (result.error) {
@@ -127,6 +142,10 @@
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Inscription...';
             
             try {
+                if (!window.api) {
+                    throw new Error('API non initialisée');
+                }
+                
                 const result = await window.api.signUp(email, password, username);
                 
                 if (result.error) {

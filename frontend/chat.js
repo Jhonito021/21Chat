@@ -1,16 +1,16 @@
-// chat.js - Interface de chat
+// chat.js - Interface de chat (version corrigée)
 (function() {
     let currentUser = null;
     let currentChatUser = null;
     let typingTimeout = null;
+    let messageRefreshInterval = null;
+    let usersList = [];
     
-    // Initialisation
     document.addEventListener('DOMContentLoaded', async () => {
         await initChat();
         initTheme();
         setupEventListeners();
         
-        // Menu mobile
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
         if (menuToggle) {
@@ -26,6 +26,12 @@
                 }
             }
         });
+        
+        messageRefreshInterval = setInterval(() => {
+            if (currentChatUser && (!window.api.socket || !window.api.socket.connected)) {
+                loadMessages();
+            }
+        }, 5000);
     });
     
     async function initChat() {
@@ -35,26 +41,24 @@
         }
         
         try {
-            // Récupérer l'utilisateur courant depuis le token
-            const token = localStorage.getItem('token');
-            if (!token) {
-                throw new Error('Non authentifié');
+            const user = await window.api.getCurrentUser();
+            if (user.error) {
+                throw new Error(user.error);
             }
+            currentUser = user;
             
-            // Simuler l'utilisateur courant (le backend nous donnera les infos)
-            currentUser = { id: 'current' };
+            document.getElementById('currentUsername').textContent = currentUser.username || 'Utilisateur';
             
-            // Charger les utilisateurs
             await loadUsers();
             
-            // Configurer les callbacks socket
             window.api.onNewMessage = (message) => {
                 if (currentChatUser && message.sender_id === currentChatUser.id) {
                     loadMessages();
-                    showToast(`📩 Nouveau message de ${currentChatUser.username}`);
+                    window.api.markMessagesAsRead(currentChatUser.id);
                 } else if (message.sender_id !== currentUser.id) {
-                    // Mettre à jour la liste des utilisateurs pour montrer un nouveau message
                     loadUsers();
+                    const sender = usersList.find(u => u.id === message.sender_id);
+                    showToast(`📩 Nouveau message de ${sender?.username || 'quelqu\'un'}`);
                 }
             };
             
@@ -62,16 +66,23 @@
                 if (currentChatUser && data.sender_id === currentChatUser.id) {
                     const statusSpan = document.getElementById('chatUserStatus');
                     if (data.is_typing) {
-                        statusSpan.innerHTML = '<i class="fas fa-circle"></i> En train d\'écrire...';
+                        statusSpan.innerHTML = '<i class="fas fa-circle"></i> <em>En train d\'écrire...</em>';
+                        statusSpan.style.opacity = '0.7';
                     } else {
-                        statusSpan.innerHTML = '<i class="fas fa-circle"></i> En ligne';
+                        const user = usersList.find(u => u.id === currentChatUser.id);
+                        if (user && user.is_online) {
+                            statusSpan.innerHTML = '<i class="fas fa-circle"></i> En ligne';
+                        } else {
+                            statusSpan.innerHTML = '<i class="fas fa-circle"></i> Hors ligne';
+                        }
+                        statusSpan.style.opacity = '1';
                     }
                 }
             };
             
         } catch (error) {
             console.error('Erreur initChat:', error);
-            showToast('Erreur de connexion', true);
+            showToast('Erreur de connexion au serveur', true);
         }
     }
     
@@ -83,30 +94,26 @@
                 throw new Error(users.error);
             }
             
+            usersList = users;
             displayUsers(users);
             
-            // Mettre à jour l'utilisateur courant avec les infos du premier utilisateur? 
-            // Pour simplifier, on prend le premier utilisateur comme exemple
-            if (users.length > 0 && !currentUser.username) {
-                // On va chercher l'utilisateur courant via une requête spéciale
-                // Pour l'instant, on garde l'ID du token
-            }
         } catch (error) {
             console.error('Erreur loadUsers:', error);
+            showToast('Impossible de charger les contacts', true);
         }
     }
     
     function displayUsers(users) {
-        const usersList = document.getElementById('usersList');
-        if (!usersList) return;
+        const usersListEl = document.getElementById('usersList');
+        if (!usersListEl) return;
         
         if (users.length === 0) {
-            usersList.innerHTML = '<div class="loading-users"><i class="fas fa-users"></i> Aucun utilisateur trouvé</div>';
+            usersListEl.innerHTML = '<div class="loading-users"><i class="fas fa-users"></i> Aucun autre utilisateur trouvé</div>';
             return;
         }
         
-        usersList.innerHTML = users.map(user => `
-            <div class="user-item" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">
+        usersListEl.innerHTML = users.map(user => `
+            <div class="user-item ${currentChatUser && currentChatUser.id === user.id ? 'active' : ''}" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">
                 <div class="avatar small">
                     <i class="fas fa-user-circle"></i>
                 </div>
@@ -148,8 +155,7 @@
             }
         });
         
-        const users = await window.api.getUsers();
-        const user = users.find(u => u.id === userId);
+        const user = usersList.find(u => u.id === userId);
         
         const statusSpan = document.getElementById('chatUserStatus');
         if (user && user.is_online) {
@@ -161,6 +167,7 @@
         }
         
         await loadMessages();
+        await window.api.markMessagesAsRead(userId);
     }
     
     async function loadMessages() {
@@ -174,25 +181,29 @@
         }
         
         displayMessages(messages);
+        await window.api.markMessagesAsRead(currentChatUser.id);
     }
     
     function displayMessages(messages) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
         
-        if (messages.length === 0) {
+        if (!messages || messages.length === 0) {
             container.innerHTML = '<div class="no-chat-selected"><i class="fas fa-comment-dots"></i><p>Aucun message, commencez la conversation !</p></div>';
             return;
         }
         
-        container.innerHTML = messages.map(msg => `
-            <div class="message ${msg.sender_id === currentChatUser.id ? 'received' : 'sent'}">
-                <div class="message-bubble">
-                    <div class="message-text">${escapeHtml(msg.message)}</div>
-                    <div class="message-time">${formatTime(msg.created_at)}</div>
+        container.innerHTML = messages.map(msg => {
+            const isSent = msg.sender_id === currentUser?.id;
+            return `
+                <div class="message ${isSent ? 'sent' : 'received'}">
+                    <div class="message-bubble">
+                        <div class="message-text">${escapeHtml(msg.message)}</div>
+                        <div class="message-time">${formatTime(msg.created_at)}</div>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
         
         setTimeout(() => {
             container.scrollTop = container.scrollHeight;
@@ -205,14 +216,22 @@
         
         if (!message || !currentChatUser) return;
         
+        const sendBtn = document.getElementById('sendMessageBtn');
+        sendBtn.disabled = true;
+        
         try {
-            await window.api.sendMessage(currentChatUser.id, message);
+            const result = await window.api.sendMessage(currentChatUser.id, message);
+            if (result.error) {
+                throw new Error(result.error);
+            }
             input.value = '';
             input.style.height = 'auto';
             input.focus();
             await loadMessages();
         } catch (error) {
             showToast('Erreur lors de l\'envoi du message', true);
+        } finally {
+            sendBtn.disabled = false;
         }
     }
     
@@ -234,10 +253,13 @@
                 this.style.height = 'auto';
                 this.style.height = Math.min(this.scrollHeight, 100) + 'px';
                 
-                // Envoyer l'indicateur de frappe
-                if (currentChatUser) {
-                    if (typingTimeout) clearTimeout(typingTimeout);
+                if (currentChatUser && window.api.socket) {
+                    if (typingTimeout) {
+                        clearTimeout(typingTimeout);
+                    }
+                    
                     window.api.sendTyping(currentChatUser.id, true);
+                    
                     typingTimeout = setTimeout(() => {
                         window.api.sendTyping(currentChatUser.id, false);
                     }, 1000);
@@ -245,7 +267,6 @@
             });
         }
         
-        // Bouton de déconnexion
         const logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) {
             logoutBtn.addEventListener('click', (e) => {
@@ -254,7 +275,6 @@
             });
         }
         
-        // Modal
         const cancelBtn = document.getElementById('cancelLogoutBtn');
         const confirmBtn = document.getElementById('confirmLogoutBtn');
         const modal = document.getElementById('logoutModal');
@@ -267,6 +287,9 @@
         
         if (confirmBtn) {
             confirmBtn.addEventListener('click', async () => {
+                if (messageRefreshInterval) {
+                    clearInterval(messageRefreshInterval);
+                }
                 await window.api.logout();
                 modal.classList.remove('show');
                 showToast('Déconnexion réussie !');
@@ -284,11 +307,9 @@
             });
         }
         
-        // Thème
         const themeToggle = document.getElementById('themeToggleSidebar');
         if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
         
-        // Raccourcis clavier
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.shiftKey && e.key === 'D') {
                 e.preventDefault();
