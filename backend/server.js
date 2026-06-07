@@ -1,297 +1,245 @@
 const express = require('express');
-const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const http = require('http');
-const socketIo = require('socket.io');
-const crypto = require('crypto');
-require('dotenv').config();
+const cors = require('cors');
+const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config();
+
+const { 
+    createUser, 
+    getUserByEmail, 
+    getUserById,
+    searchUsers,
+    getAllUsers,
+    createConversation,
+    getUserConversations,
+    getMessages,
+    markMessagesAsRead,
+    testConnection
+} = require('./database');
+
+const { initSocket, isUserOnline } = require('./socket');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
 
-// Middleware
-app.use(cors());
+// CORS
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-Session-Id']
+}));
+
+app.options('*', cors());
+
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Configuration Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Sessions
+const sessions = new Map();
 
-// JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'mon_secret_jwt_pour_chatapp_2024';
+function createSession(userId) {
+    const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+    sessions.set(sessionId, { userId, createdAt: Date.now() });
+    return sessionId;
+}
 
-// Middleware d'authentification
-const authenticateToken = async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ error: 'Non autorisé' });
-  }
-  
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
+function getUserIdFromSession(sessionId) {
+    const session = sessions.get(sessionId);
+    if (session && Date.now() - session.createdAt < 7 * 24 * 60 * 60 * 1000) {
+        return session.userId;
+    }
+    sessions.delete(sessionId);
+    return null;
+}
+
+function authMiddleware(req, res, next) {
+    const sessionId = req.headers['x-session-id'];
+    
+    if (!sessionId) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
+    }
+    
+    const userId = getUserIdFromSession(sessionId);
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Session invalide' });
+    }
+    
+    req.userId = userId;
     next();
-  } catch (error) {
-    res.status(401).json({ error: 'Token invalide' });
-  }
-};
+}
 
-// Routes API
+// ==================== ROUTES ====================
 
-// Inscription
-app.post('/api/signup', async (req, res) => {
-  const { username, email, password } = req.body;
-  
-  try {
-    // Vérifier si l'utilisateur existe déjà
-    const { data: existing, error: checkError } = await supabase
-      .from('users')
-      .select('id')
-      .or(`email.eq.${email},username.eq.${username}`);
-    
-    if (existing && existing.length > 0) {
-      return res.status(400).json({ error: 'Email ou nom d\'utilisateur déjà utilisé' });
-    }
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userId = crypto.randomUUID();
-    
-    const { data: user, error: insertError } = await supabase
-      .from('users')
-      .insert([{ 
-        id: userId, 
-        username, 
-        email, 
-        password: hashedPassword, 
-        is_online: true 
-      }])
-      .select();
-    
-    if (insertError) throw insertError;
-    
-    const token = jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' });
-    
-    res.json({ 
-      success: true, 
-      user: { id: userId, username, email },
-      token 
-    });
-  } catch (error) {
-    console.error('Erreur signup:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
+app.get('/api/health', (req, res) => {
+    res.json({ success: true, message: 'API OK' });
 });
 
-// Connexion
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  
-  try {
-    const { data: users, error: findError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email);
-    
-    if (findError || !users || users.length === 0) {
-      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-    }
-    
-    const user = users[0];
-    const validPassword = await bcrypt.compare(password, user.password);
-    
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-    }
-    
-    // Mettre à jour le statut en ligne
-    await supabase
-      .from('users')
-      .update({ is_online: true, last_seen: new Date() })
-      .eq('id', user.id);
-    
-    const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '7d' });
-    
-    res.json({
-      success: true,
-      user: { id: user.id, username: user.username, email: user.email },
-      token
-    });
-  } catch (error) {
-    console.error('Erreur login:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Récupérer l'utilisateur courant
-app.get('/api/me', authenticateToken, async (req, res) => {
-  try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('id, username, email, is_online, last_seen')
-      .eq('id', req.userId);
-    
-    if (error || !users || users.length === 0) {
-      return res.status(404).json({ error: 'Utilisateur non trouvé' });
-    }
-    
-    res.json(users[0]);
-  } catch (error) {
-    console.error('Erreur get me:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Récupérer les utilisateurs
-app.get('/api/users', authenticateToken, async (req, res) => {
-  try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('id, username, email, is_online, last_seen')
-      .neq('id', req.userId)
-      .order('is_online', { ascending: false })
-      .order('username', { ascending: true });
-    
-    if (error) throw error;
-    res.json(users);
-  } catch (error) {
-    console.error('Erreur get users:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Récupérer les messages
-app.get('/api/messages/:userId', authenticateToken, async (req, res) => {
-  const otherUserId = req.params.userId;
-  
-  try {
-    const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`and(sender_id.eq.${req.userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${req.userId})`)
-      .order('created_at', { ascending: true });
-    
-    if (error) throw error;
-    res.json(messages);
-  } catch (error) {
-    console.error('Erreur get messages:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Envoyer un message
-app.post('/api/messages', authenticateToken, async (req, res) => {
-  const { receiver_id, message } = req.body;
-  
-  try {
-    const { data: newMessage, error } = await supabase
-      .from('messages')
-      .insert([{ 
-        sender_id: req.userId, 
-        receiver_id, 
-        message,
-        created_at: new Date()
-      }])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    
-    io.to(receiver_id).emit('new_message', newMessage);
-    
-    res.json({ success: true, id: newMessage.id });
-  } catch (error) {
-    console.error('Erreur send message:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Marquer les messages comme lus
-app.post('/api/messages/read/:userId', authenticateToken, async (req, res) => {
-  const otherUserId = req.params.userId;
-  
-  try {
-    const { error } = await supabase
-      .from('messages')
-      .update({ is_read: true })
-      .eq('sender_id', otherUserId)
-      .eq('receiver_id', req.userId)
-      .eq('is_read', false);
-    
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Erreur mark read:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Déconnexion
-app.post('/api/logout', authenticateToken, async (req, res) => {
-  try {
-    await supabase
-      .from('users')
-      .update({ is_online: false, last_seen: new Date() })
-      .eq('id', req.userId);
-    
-    res.json({ success: true });
-  } catch (error) {
-    res.json({ success: true });
-  }
-});
-
-// Socket.IO - reste identique
-io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
-  if (token) {
+app.post('/api/register', async (req, res) => {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      socket.userId = decoded.userId;
-      next();
-    } catch(e) {
-      next(new Error('Authentication error'));
+        const { username, email, password } = req.body;
+        
+        if (!username || !email || !password) {
+            return res.status(400).json({ success: false, message: 'Tous les champs sont requis' });
+        }
+        
+        const existingUser = await getUserByEmail(email);
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
+        }
+        
+        const userId = await createUser(username, email, password);
+        const sessionId = createSession(userId);
+        const user = await getUserById(userId);
+        
+        res.json({ success: true, data: { sessionId, user } });
+        
+    } catch (error) {
+        console.error('Register error:', error);
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
-  } else {
-    next(new Error('Authentication error'));
-  }
 });
 
-io.on('connection', (socket) => {
-  console.log('🔌 Utilisateur connecté:', socket.userId);
-  
-  socket.join(socket.userId);
-  
-  socket.on('typing', (data) => {
-    socket.to(data.receiver_id).emit('user_typing', {
-      sender_id: socket.userId,
-      is_typing: data.is_typing
-    });
-  });
-  
-  socket.on('disconnect', async () => {
-    console.log('🔌 Utilisateur déconnecté:', socket.userId);
-    if (socket.userId) {
-      try {
-        await supabase
-          .from('users')
-          .update({ is_online: false, last_seen: new Date() })
-          .eq('id', socket.userId);
-      } catch(e) {}
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
+        }
+        
+        const user = await getUserByEmail(email);
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
+        }
+        
+        const bcrypt = require('bcryptjs');
+        const isValid = await bcrypt.compare(password, user.password);
+        
+        if (!isValid) {
+            return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
+        }
+        
+        const sessionId = createSession(user.id);
+        const userData = await getUserById(user.id);
+        
+        res.json({ success: true, data: { sessionId, user: userData } });
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
-  });
 });
 
-// Démarrer le serveur
+app.post('/api/logout', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    if (sessionId) {
+        sessions.delete(sessionId);
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/verify', authMiddleware, async (req, res) => {
+    try {
+        const user = await getUserById(req.userId);
+        res.json({ success: true, data: user });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/users/search', authMiddleware, async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 2) {
+            return res.json({ success: true, data: [] });
+        }
+        const users = await searchUsers(q, req.userId);
+        res.json({ success: true, data: users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/users', authMiddleware, async (req, res) => {
+    try {
+        const users = await getAllUsers(req.userId);
+        res.json({ success: true, data: users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/conversations', authMiddleware, async (req, res) => {
+    try {
+        const { otherUserId } = req.body;
+        const conversationId = await createConversation(req.userId, parseInt(otherUserId));
+        res.json({ success: true, data: { conversationId } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/conversations', authMiddleware, async (req, res) => {
+    try {
+        const conversations = await getUserConversations(req.userId);
+        const enriched = conversations.map(conv => ({
+            ...conv,
+            other_is_online: isUserOnline(conv.other_user_id)
+        }));
+        res.json({ success: true, data: enriched });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/messages/:conversationId', authMiddleware, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const messages = await getMessages(parseInt(conversationId));
+        res.json({ success: true, data: messages });
+    } catch (error) {
+        console.error('Route messages error:', error);
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.post('/api/messages/read', authMiddleware, async (req, res) => {
+    try {
+        const { conversationId } = req.body;
+        await markMessagesAsRead(conversationId, req.userId);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
+    }
+});
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// ==================== DÉMARRAGE ====================
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Serveur Supabase démarré sur http://localhost:${PORT}`);
-});
+
+async function startServer() {
+    const connected = await testConnection();
+    if (!connected) {
+        console.error(' MySQL non connecté');
+        process.exit(1);
+    }
+    
+    initSocket(server);
+    
+    server.listen(PORT, () => {
+        console.log(`
+Serveur démarré                                 
+http://localhost:${PORT}                         
+WebSocket: ws://localhost:${PORT}             
+
+        `);
+    });
+}
+
+startServer();

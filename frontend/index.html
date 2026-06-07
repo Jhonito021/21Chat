@@ -2,78 +2,240 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>ChatApp - Connectez-vous</title>
-    <link rel="manifest" href="manifest.json">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#e94560">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <meta name="description" content="Application de chat entre amis">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <title>ChatLink - Messages entre amis</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <div class="container">
-        <div class="auth-container">
-            <div class="theme-toggle">
-                <button id="themeToggle" class="theme-btn">
-                    <i class="fas fa-moon"></i>
-                </button>
+<body class="light-theme">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-comment-dots"></i>
+                    </div>
+                    <div class="logo-text">
+                        <h2>Chat21</h2>
+                        <span>Premium</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="closeSidebarBtn" class="icon-btn mobile-only" style="display: none;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <button id="installBtn" class="icon-btn tooltip" data-tooltip="Installer l'application" style="display: none;">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button id="themeToggle" class="icon-btn tooltip" data-tooltip="Changer le thème">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                </div>
             </div>
-            
-            <div class="logo">
-                <i class="fas fa-comments"></i>
-                <h1>ChatApp</h1>
-                <p>Connectez-vous avec vos amis</p>
+
+            <div class="user-section" id="userSection">
+                <div class="user-card" id="userInfo">
+                    <div class="user-avatar-wrapper">
+                        <div class="user-avatar" id="userAvatar">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <div class="user-status-badge" id="userStatusBadge">
+                            <!-- <i class="fas fa-circle"></i> -->
+                        </div>
+                    </div>
+                    <div class="user-details">
+                        <span class="user-name" id="username">Invité</span>
+                        <span class="user-status-text" id="userStatus">
+                            <i class="fas fa-circle"></i> Déconnecté
+                        </span>
+                    </div>
+                </div>
+                <div class="auth-buttons">
+                    <button id="loginBtn" class="btn-primary btn-gradient">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <span>Connexion</span>
+                    </button>
+                    <button id="logoutBtn" class="btn-secondary" style="display: none;">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Déconnexion</span>
+                    </button>
+                </div>
             </div>
-            
-            <div class="auth-box">
+
+            <div class="search-section">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchConversation" placeholder="Rechercher une conversation...">
+                </div>
+            </div>
+
+            <div class="conversations-section">
+                <div class="section-header">
+                    <div class="section-title">
+                        <i class="fas fa-comments"></i>
+                        <h3>Messages</h3>
+                    </div>
+                    <button id="newConversationBtn" class="fab-mini tooltip" data-tooltip="Nouvelle conversation">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+                <div class="conversations-list" id="conversationsList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <h4>Aucune conversation</h4>
+                        <p>Connectez-vous pour commencer</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="app-info">
+                    <span>Version 2.0</span>
+                    <span>© 2024 ChatLink</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Overlay pour fermer le sidebar sur mobile -->
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+        <!-- Zone de chat -->
+        <main class="chat-area">
+            <div class="chat-header" id="chatHeader">
+                <div class="chat-header-info">
+                    <button id="mobileMenuBtn" class="mobile-menu-btn">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div class="chat-avatar">
+                        <i class="fas fa-comment-dots"></i>
+                    </div>
+                    <div class="chat-details">
+                        <h3 id="currentChatName">ChatLink</h3>
+                        <span class="chat-status" id="chatStatus">Sélectionnez une conversation</span>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button id="themeToggleMobile" class="icon-btn mobile-only">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="messages-container" id="messagesContainer">
+                <div class="empty-chat-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-comment-dots"></i>
+                    </div>
+                    <h3>Bienvenue sur ChatLink</h3>
+                    <p>Sélectionnez une conversation ou commencez-en une nouvelle</p>
+                </div>
+            </div>
+
+            <div class="message-input-area" id="messageInputArea" style="display: none;">
+                <div class="input-wrapper">
+                    <textarea id="messageInput" placeholder="Écrivez votre message..." rows="1"></textarea>
+                    <button id="sendMessageBtn" class="send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Connexion -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content modal-modern">
+            <div class="modal-header">
+                <div class="modal-logo">
+                    <i class="fas fa-comment-dots"></i>
+                </div>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
                 <div class="auth-tabs">
-                    <button class="tab-btn active" data-tab="login">
+                    <button class="auth-tab active" data-tab="login">
                         <i class="fas fa-sign-in-alt"></i> Connexion
                     </button>
-                    <button class="tab-btn" data-tab="register">
+                    <button class="auth-tab" data-tab="register">
                         <i class="fas fa-user-plus"></i> Inscription
                     </button>
                 </div>
-
-                <form id="loginForm" class="auth-form active">
-                    <div class="input-group">
-                        <i class="fas fa-envelope"></i>
-                        <input type="email" id="loginEmail" placeholder="Email" required autocomplete="email">
+                <form id="loginForm">
+                    <div class="form-group">
+                        <div class="input-icon">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" id="loginEmail" placeholder="Email" required>
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <i class="fas fa-lock"></i>
-                        <input type="password" id="loginPassword" placeholder="Mot de passe" required autocomplete="current-password">
+                    <div class="form-group">
+                        <div class="input-icon">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="loginPassword" placeholder="Mot de passe" required>
+                        </div>
                     </div>
-                    <button type="submit" class="btn-primary">
-                        <i class="fas fa-paper-plane"></i> Se connecter
+                    <button type="submit" class="btn-primary btn-gradient btn-large">
+                        <span>Se connecter</span>
+                        <i class="fas fa-arrow-right"></i>
                     </button>
                 </form>
-
-                <form id="registerForm" class="auth-form">
-                    <div class="input-group">
-                        <i class="fas fa-user"></i>
-                        <input type="text" id="registerUsername" placeholder="Nom d'utilisateur" required minlength="3">
+                <form id="registerForm" style="display: none;">
+                    <div class="form-group">
+                        <div class="input-icon">
+                            <i class="fas fa-user"></i>
+                            <input type="text" id="registerUsername" placeholder="Nom d'utilisateur" required>
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <i class="fas fa-envelope"></i>
-                        <input type="email" id="registerEmail" placeholder="Email" required autocomplete="email">
+                    <div class="form-group">
+                        <div class="input-icon">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" id="registerEmail" placeholder="Email" required>
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <i class="fas fa-lock"></i>
-                        <input type="password" id="registerPassword" placeholder="Mot de passe (min 6 caractères)" required minlength="6">
+                    <div class="form-group">
+                        <div class="input-icon">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="registerPassword" placeholder="Mot de passe" required>
+                        </div>
                     </div>
-                    <button type="submit" class="btn-primary">
-                        <i class="fas fa-user-plus"></i> S'inscrire
+                    <button type="submit" class="btn-primary btn-gradient btn-large">
+                        <span>S'inscrire</span>
+                        <i class="fas fa-arrow-right"></i>
                     </button>
                 </form>
             </div>
         </div>
     </div>
 
-    <div id="toast" class="toast"></div>
-    
-    <!-- ⚠️ ORDRE IMPORTANT : Socket.IO d'abord, puis local-api.js, puis script.js -->
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <script src="local-api.js"></script>
+    <!-- Modal Nouvelle conversation -->
+    <div id="newConversationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-plus"></i> Nouvelle conversation</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="search-user-box">
+                    <div class="input-icon">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchUser" placeholder="Nom d'utilisateur...">
+                    </div>
+                </div>
+                <div class="users-list" id="usersList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
