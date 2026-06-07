@@ -1,37 +1,45 @@
 {
-  "name": "ChatNodeJS - Messages entre amis",
-  "short_name": "ChatNodeJS",
-  "description": "Application de chat en temps réel avec Node.js et MySQL",
+  "name": "ChatSupabase - Messages entre amis",
+  "short_name": "ChatSupabase",
+  "description": "Application de chat en temps réel avec Supabase",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#e94560",
   "background_color": "#ffffff",
   "orientation": "portrait",
+  "scope": "/",
+  "lang": "fr",
+  "categories": ["social", "communication", "messaging"],
   "icons": [
     {
       "src": "icons/icon-72.png",
       "sizes": "72x72",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-96.png",
       "sizes": "96x96",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-128.png",
       "sizes": "128x128",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-144.png",
       "sizes": "144x144",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-152.png",
       "sizes": "152x152",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-192.png",
@@ -42,12 +50,46 @@
     {
       "src": "icons/icon-384.png",
       "sizes": "384x384",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "Nouvelle conversation",
+      "short_name": "Nouveau",
+      "description": "Commencer une nouvelle conversation",
+      "url": "/",
+      "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "description": "Voir les messages",
+      "url": "/",
+      "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "screenshots/mobile.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
 }

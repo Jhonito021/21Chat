@@ -2,42 +2,33 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const path = require('path');
+const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
+const { Server } = require('socket.io');
 
 dotenv.config();
 
-const { 
-    createUser, 
-    getUserByEmail, 
-    getUserById,
-    searchUsers,
-    getAllUsers,
-    createConversation,
-    getUserConversations,
-    getMessages,
-    markMessagesAsRead,
-    testConnection
-} = require('./database');
-
-const { initSocket, isUserOnline } = require('./socket');
+const supabase = require('./supabaseClient');
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
-// CORS
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-Session-Id']
-}));
+const PORT = process.env.PORT || 3000;
 
-app.options('*', cors());
-
+// Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Sessions
 const sessions = new Map();
+const onlineUsers = new Map();
 
 function createSession(userId) {
     const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
@@ -45,37 +36,126 @@ function createSession(userId) {
     return sessionId;
 }
 
-function getUserIdFromSession(sessionId) {
-    const session = sessions.get(sessionId);
-    if (session && Date.now() - session.createdAt < 7 * 24 * 60 * 60 * 1000) {
-        return session.userId;
-    }
-    sessions.delete(sessionId);
-    return null;
-}
-
-function authMiddleware(req, res, next) {
-    const sessionId = req.headers['x-session-id'];
-    
-    if (!sessionId) {
-        return res.status(401).json({ success: false, message: 'Non authentifié' });
-    }
-    
-    const userId = getUserIdFromSession(sessionId);
+// ==================== SOCKET.IO ====================
+io.use((socket, next) => {
+    const userId = socket.handshake.auth.userId;
     if (!userId) {
-        return res.status(401).json({ success: false, message: 'Session invalide' });
+        return next(new Error('Non authentifié'));
     }
-    
-    req.userId = userId;
+    socket.userId = parseInt(userId);
     next();
-}
+});
 
-// ==================== ROUTES ====================
+io.on('connection', (socket) => {
+    console.log('🟢 Utilisateur connecté:', socket.userId);
+    
+    onlineUsers.set(socket.userId, socket.id);
+    
+    // Mettre à jour le statut dans Supabase
+    supabase
+        .from('users')
+        .update({ status: 'online', last_seen: new Date() })
+        .eq('id', socket.userId)
+        .then();
+    
+    // Rejoindre une conversation
+    socket.on('join_conversation', (conversationId) => {
+        socket.join(`conv_${conversationId}`);
+        console.log(`User ${socket.userId} joined conv_${conversationId}`);
+    });
+    
+    // Quitter une conversation
+    socket.on('leave_conversation', (conversationId) => {
+        socket.leave(`conv_${conversationId}`);
+    });
+    
+    // Envoi de message
+    socket.on('send_message', async (data) => {
+        try {
+            const { conversationId, message } = data;
+            
+            // Sauvegarder dans Supabase
+            const { data: newMessage, error } = await supabase
+                .from('messages')
+                .insert({
+                    conversation_id: conversationId,
+                    user_id: socket.userId,
+                    message: message
+                })
+                .select(`
+                    *,
+                    users (username, avatar, color)
+                `)
+                .single();
+            
+            if (error) throw error;
+            
+            // Mettre à jour la conversation
+            await supabase
+                .from('conversations')
+                .update({ updated_at: new Date() })
+                .eq('id', conversationId);
+            
+            // Envoyer à tous les participants
+            io.to(`conv_${conversationId}`).emit('new_message', {
+                id: newMessage.id,
+                conversation_id: newMessage.conversation_id,
+                user_id: newMessage.user_id,
+                message: newMessage.message,
+                created_at: newMessage.created_at,
+                username: newMessage.users.username,
+                avatar: newMessage.users.avatar,
+                color: newMessage.users.color
+            });
+            
+        } catch (error) {
+            console.error('Erreur envoi message:', error);
+            socket.emit('message_error', { error: error.message });
+        }
+    });
+    
+    // Indicateur de frappe
+    socket.on('typing', (data) => {
+        const { conversationId, isTyping } = data;
+        socket.to(`conv_${conversationId}`).emit('user_typing', {
+            userId: socket.userId,
+            conversationId,
+            isTyping
+        });
+    });
+    
+    // Marquer comme lu
+    socket.on('mark_read', async (conversationId) => {
+        await supabase
+            .from('messages')
+            .update({ is_read: true })
+            .eq('conversation_id', conversationId)
+            .neq('user_id', socket.userId);
+        
+        io.to(`conv_${conversationId}`).emit('messages_read', { conversationId });
+    });
+    
+    // Déconnexion
+    socket.on('disconnect', () => {
+        console.log('🔴 Utilisateur déconnecté:', socket.userId);
+        onlineUsers.delete(socket.userId);
+        
+        supabase
+            .from('users')
+            .update({ status: 'offline', last_seen: new Date() })
+            .eq('id', socket.userId)
+            .then();
+    });
+});
 
+// ==================== ROUTES API ====================
+
+// Health check
 app.get('/api/health', (req, res) => {
     res.json({ success: true, message: 'API OK' });
 });
 
+// Inscription
 app.post('/api/register', async (req, res) => {
     try {
         const { username, email, password } = req.body;
@@ -84,37 +164,60 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Tous les champs sont requis' });
         }
         
-        const existingUser = await getUserByEmail(email);
-        if (existingUser) {
+        // Vérifier si l'utilisateur existe
+        const { data: existing } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .single();
+        
+        if (existing) {
             return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
         }
         
-        const userId = await createUser(username, email, password);
-        const sessionId = createSession(userId);
-        const user = await getUserById(userId);
+        const hashedPassword = await bcrypt.hash(password, 10);
         
-        res.json({ success: true, data: { sessionId, user } });
+        const { data: newUser, error } = await supabase
+            .from('users')
+            .insert({
+                username,
+                email,
+                password: hashedPassword,
+                avatar: 'user-circle',
+                color: '#e94560'
+            })
+            .select('id, username, email, avatar, color')
+            .single();
+        
+        if (error) throw error;
+        
+        const sessionId = createSession(newUser.id);
+        
+        res.json({ success: true, data: { sessionId, user: newUser } });
         
     } catch (error) {
-        console.error('Register error:', error);
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
+        console.error('Erreur:', error);
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
+// Connexion
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        if (!email || !password) {
-            return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
-        }
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email);
         
-        const user = await getUserByEmail(email);
-        if (!user) {
+        if (error) throw error;
+        
+        if (!users || users.length === 0) {
             return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
         }
         
-        const bcrypt = require('bcryptjs');
+        const user = users[0];
         const isValid = await bcrypt.compare(password, user.password);
         
         if (!isValid) {
@@ -122,124 +225,253 @@ app.post('/api/login', async (req, res) => {
         }
         
         const sessionId = createSession(user.id);
-        const userData = await getUserById(user.id);
         
-        res.json({ success: true, data: { sessionId, user: userData } });
+        res.json({ 
+            success: true, 
+            data: { 
+                sessionId, 
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    avatar: user.avatar,
+                    color: user.color
+                }
+            } 
+        });
         
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('Erreur:', error);
         res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
 });
 
+// Déconnexion
 app.post('/api/logout', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    if (sessionId) {
-        sessions.delete(sessionId);
-    }
+    if (sessionId) sessions.delete(sessionId);
     res.json({ success: true });
 });
 
-app.get('/api/verify', authMiddleware, async (req, res) => {
-    try {
-        const user = await getUserById(req.userId);
-        res.json({ success: true, data: user });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
+// Vérifier session
+app.get('/api/verify', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    if (!sessionId || !sessions.has(sessionId)) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
+    res.json({ success: true, data: { id: sessions.get(sessionId).userId } });
 });
 
-app.get('/api/users/search', authMiddleware, async (req, res) => {
+// Obtenir conversations
+app.get('/api/conversations', async (req, res) => {
     try {
-        const { q } = req.query;
-        if (!q || q.length < 2) {
-            return res.json({ success: true, data: [] });
+        const sessionId = req.headers['x-session-id'];
+        if (!sessionId || !sessions.has(sessionId)) {
+            return res.status(401).json({ success: false, message: 'Non authentifié' });
         }
-        const users = await searchUsers(q, req.userId);
-        res.json({ success: true, data: users });
+        
+        const userId = sessions.get(sessionId).userId;
+        
+        // Récupérer les conversations
+        const { data: participants, error } = await supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', userId);
+        
+        if (error) throw error;
+        
+        const conversations = [];
+        
+        for (const p of participants) {
+            // Récupérer l'autre utilisateur
+            const { data: otherUser } = await supabase
+                .from('conversation_participants')
+                .select('users(id, username, avatar, color, status)')
+                .eq('conversation_id', p.conversation_id)
+                .neq('user_id', userId)
+                .single();
+            
+            // Récupérer dernier message
+            const { data: lastMsg } = await supabase
+                .from('messages')
+                .select('message, created_at')
+                .eq('conversation_id', p.conversation_id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            
+            // Compter non lus
+            const { count } = await supabase
+                .from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('conversation_id', p.conversation_id)
+                .neq('user_id', userId)
+                .eq('is_read', false);
+            
+            conversations.push({
+                id: p.conversation_id,
+                other_user_id: otherUser?.users?.id,
+                other_username: otherUser?.users?.username || 'Inconnu',
+                other_avatar: otherUser?.users?.avatar || 'user-circle',
+                other_status: otherUser?.users?.status || 'offline',
+                last_message: lastMsg?.[0]?.message || null,
+                last_message_time: lastMsg?.[0]?.created_at || null,
+                unread_count: count || 0
+            });
+        }
+        
+        res.json({ success: true, data: conversations });
+        
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
+        console.error('Erreur:', error);
+        res.json({ success: true, data: [] });
     }
 });
 
-app.get('/api/users', authMiddleware, async (req, res) => {
-    try {
-        const users = await getAllUsers(req.userId);
-        res.json({ success: true, data: users });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
-    }
-});
-
-app.post('/api/conversations', authMiddleware, async (req, res) => {
-    try {
-        const { otherUserId } = req.body;
-        const conversationId = await createConversation(req.userId, parseInt(otherUserId));
-        res.json({ success: true, data: { conversationId } });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/conversations', authMiddleware, async (req, res) => {
-    try {
-        const conversations = await getUserConversations(req.userId);
-        const enriched = conversations.map(conv => ({
-            ...conv,
-            other_is_online: isUserOnline(conv.other_user_id)
-        }));
-        res.json({ success: true, data: enriched });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/messages/:conversationId', authMiddleware, async (req, res) => {
+// Obtenir messages
+app.get('/api/messages/:conversationId', async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const messages = await getMessages(parseInt(conversationId));
-        res.json({ success: true, data: messages });
+        
+        const { data: messages, error } = await supabase
+            .from('messages')
+            .select(`
+                *,
+                users (username, avatar, color)
+            `)
+            .eq('conversation_id', parseInt(conversationId))
+            .order('created_at', { ascending: true });
+        
+        if (error) throw error;
+        
+        const formatted = messages.map(m => ({
+            ...m,
+            username: m.users.username,
+            avatar: m.users.avatar,
+            color: m.users.color
+        }));
+        
+        res.json({ success: true, data: formatted });
+        
     } catch (error) {
-        console.error('Route messages error:', error);
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
+        res.json({ success: true, data: [] });
     }
 });
 
-app.post('/api/messages/read', authMiddleware, async (req, res) => {
+// Envoyer message (HTTP fallback)
+app.post('/api/messages', async (req, res) => {
     try {
-        const { conversationId } = req.body;
-        await markMessagesAsRead(conversationId, req.userId);
-        res.json({ success: true });
+        const { conversationId, message } = req.body;
+        const sessionId = req.headers['x-session-id'];
+        const userId = sessions.get(sessionId)?.userId;
+        
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Non authentifié' });
+        }
+        
+        const { data: newMessage, error } = await supabase
+            .from('messages')
+            .insert({
+                conversation_id: conversationId,
+                user_id: userId,
+                message: message
+            })
+            .select()
+            .single();
+        
+        if (error) throw error;
+        
+        res.json({ success: true, data: newMessage });
+        
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Erreur serveur' });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
+// Créer conversation
+app.post('/api/conversations', async (req, res) => {
+    try {
+        const { otherUserId } = req.body;
+        const sessionId = req.headers['x-session-id'];
+        const userId = sessions.get(sessionId)?.userId;
+        
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Non authentifié' });
+        }
+        
+        // Vérifier si conversation existe déjà
+        const { data: existing } = await supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', userId);
+        
+        for (const item of existing || []) {
+            const { data: participants } = await supabase
+                .from('conversation_participants')
+                .select('user_id')
+                .eq('conversation_id', item.conversation_id);
+            
+            if (participants?.some(p => p.user_id === parseInt(otherUserId))) {
+                return res.json({ success: true, data: { conversationId: item.conversation_id } });
+            }
+        }
+        
+        // Créer nouvelle conversation
+        const { data: conv, error: convError } = await supabase
+            .from('conversations')
+            .insert({})
+            .select()
+            .single();
+        
+        if (convError) throw convError;
+        
+        // Ajouter participants
+        await supabase
+            .from('conversation_participants')
+            .insert([
+                { conversation_id: conv.id, user_id: userId },
+                { conversation_id: conv.id, user_id: parseInt(otherUserId) }
+            ]);
+        
+        res.json({ success: true, data: { conversationId: conv.id } });
+        
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Rechercher utilisateurs
+app.get('/api/users/search', async (req, res) => {
+    try {
+        const { q } = req.query;
+        
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, username, email, avatar, status')
+            .ilike('username', `%${q}%`)
+            .limit(10);
+        
+        if (error) throw error;
+        
+        res.json({ success: true, data: users || [] });
+        
+    } catch (error) {
+        res.json({ success: true, data: [] });
+    }
+});
+
+// Frontend
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// ==================== DÉMARRAGE ====================
-
-const PORT = process.env.PORT || 3000;
-
-async function startServer() {
-    const connected = await testConnection();
-    if (!connected) {
-        console.error(' MySQL non connecté');
-        process.exit(1);
-    }
-    
-    initSocket(server);
-    
-    server.listen(PORT, () => {
-        console.log(`
-Serveur démarré                                 
-http://localhost:${PORT}                         
-WebSocket: ws://localhost:${PORT}             
-
-        `);
-    });
-}
-
-startServer();
+// Démarrage
+server.listen(PORT, () => {
+    console.log(`
+╔═══════════════════════════════════════════════════════╗
+║   🚀 SERVEUR DÉMARRÉ                                  ║
+║   📡 http://localhost:${PORT}                          ║
+║   🔌 WebSocket: ws://localhost:${PORT}                 ║
+║   💾 Base de données: Supabase                        ║
+╚═══════════════════════════════════════════════════════╝
+    `);
+});

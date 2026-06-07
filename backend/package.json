@@ -1,24 +1,20 @@
 {
-  "name": "chat-nodejs-backend",
+  "name": "chat-supabase-backend",
   "version": "1.0.0",
-  "description": "Application de chat avec Node.js, MySQL et Socket.io",
+  "description": "Chat app with Supabase",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "vercel-build": "npm install"
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.5.4",
-    "mysql2": "^3.6.0",
-    "jsonwebtoken": "^9.0.0",
+    "@supabase/supabase-js": "^2.38.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
+    "express": "^4.18.2",
     "express-rate-limit": "^6.7.0",
-    "helmet": "^7.0.0",
-    "multer": "^1.4.5-lts.1"
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
