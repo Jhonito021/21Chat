@@ -3,28 +3,27 @@ const cors = require('cors');
 
 const app = express();
 
-// Middleware - Important pour Vercel
+// Middleware
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Session-Id']
 }));
-
+app.options('*', cors());
 app.use(express.json());
 
 // Stockage en mémoire
-const users = [];
+const users = [
+    {
+        id: 1,
+        username: 'Demo',
+        email: 'demo@example.com',
+        password: 'demo123',
+        avatar: 'user-circle',
+        color: '#e94560'
+    }
+];
 const sessions = {};
-
-// Créer un utilisateur de test au démarrage
-users.push({
-    id: 1,
-    username: 'Demo',
-    email: 'demo@example.com',
-    password: 'demo123',
-    avatar: 'user-circle',
-    color: '#e94560'
-});
 
 // Fonctions
 function createSession(userId) {
@@ -45,7 +44,7 @@ function getUserIdFromSession(sessionId) {
 
 // Health check
 app.get('/api/health', (req, res) => {
-    res.json({ success: true, message: 'API OK', usersCount: users.length });
+    res.json({ success: true, message: 'API OK' });
 });
 
 // Inscription
@@ -53,33 +52,26 @@ app.post('/api/register', (req, res) => {
     try {
         const { username, email, password } = req.body;
         
-        console.log('📝 Inscription:', { username, email });
-        
         if (!username || !email || !password) {
             return res.status(400).json({ success: false, message: 'Tous les champs sont requis' });
         }
         
-        // Vérifier si l'utilisateur existe
         const existingUser = users.find(u => u.email === email);
         if (existingUser) {
             return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
         }
         
-        // Créer l'utilisateur
         const newUser = {
             id: users.length + 1,
             username,
             email,
-            password: password,
+            password,
             avatar: 'user-circle',
             color: '#e94560'
         };
         
         users.push(newUser);
-        
         const sessionId = createSession(newUser.id);
-        
-        console.log('✅ Utilisateur créé:', username);
         
         res.json({
             success: true,
@@ -96,41 +88,26 @@ app.post('/api/register', (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Erreur inscription:', error);
         res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
 });
 
-// Connexion - CORRIGÉE
+// Connexion
 app.post('/api/login', (req, res) => {
     try {
         const { email, password } = req.body;
-        
-        console.log('🔑 Tentative de connexion:', { email, password });
-        console.log('📋 Utilisateurs existants:', users.map(u => ({ email: u.email, password: u.password })));
         
         if (!email || !password) {
             return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
         }
         
-        // Chercher l'utilisateur
         const user = users.find(u => u.email === email);
         
-        if (!user) {
-            console.log('❌ Utilisateur non trouvé:', email);
+        if (!user || user.password !== password) {
             return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
         }
         
-        // Vérifier le mot de passe
-        if (user.password !== password) {
-            console.log('❌ Mot de passe incorrect pour:', email);
-            return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
-        }
-        
-        // Créer la session
         const sessionId = createSession(user.id);
-        
-        console.log('✅ Connexion réussie:', user.username);
         
         res.json({
             success: true,
@@ -147,7 +124,6 @@ app.post('/api/login', (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Erreur connexion:', error);
         res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
 });
@@ -161,15 +137,12 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Vérifier session - CORRIGÉE
+// Vérifier session
 app.get('/api/verify', (req, res) => {
     const sessionId = req.headers['x-session-id'];
     
-    console.log('🔍 Vérification session:', sessionId);
-    console.log('📋 Sessions actives:', Object.keys(sessions));
-    
     if (!sessionId) {
-        return res.status(401).json({ success: false, message: 'Session manquante' });
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
     
     const userId = getUserIdFromSession(sessionId);
@@ -197,61 +170,48 @@ app.get('/api/verify', (req, res) => {
 // Conversations
 app.get('/api/conversations', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const userId = getUserIdFromSession(sessionId);
-    
-    if (!userId) {
+    if (!sessionId) {
         return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
-    
     res.json({ success: true, data: [] });
 });
 
 app.get('/api/messages/:conversationId', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const userId = getUserIdFromSession(sessionId);
-    
-    if (!userId) {
+    if (!sessionId) {
         return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
-    
     res.json({ success: true, data: [] });
 });
 
 app.post('/api/messages', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const userId = getUserIdFromSession(sessionId);
-    
-    if (!userId) {
+    if (!sessionId) {
         return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
-    
     res.json({ success: true, data: { id: Date.now() } });
 });
 
 app.post('/api/conversations', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const userId = getUserIdFromSession(sessionId);
-    
-    if (!userId) {
+    if (!sessionId) {
         return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
-    
     res.json({ success: true, data: { conversationId: Date.now() } });
 });
 
 app.get('/api/users/search', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    const userId = getUserIdFromSession(sessionId);
-    
-    if (!userId) {
+    if (!sessionId) {
         return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
     
     const { q } = req.query;
-    if (!q) {
+    if (!q || q.length < 2) {
         return res.json({ success: true, data: [] });
     }
     
+    const userId = getUserIdFromSession(sessionId);
     const filtered = users
         .filter(u => u.id !== userId && u.username.toLowerCase().includes(q.toLowerCase()))
         .map(u => ({
@@ -265,14 +225,4 @@ app.get('/api/users/search', (req, res) => {
     res.json({ success: true, data: filtered });
 });
 
-// Export pour Vercel
 module.exports = app;
-
-// Pour test local
-if (require.main === module) {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-        console.log(`🚀 Serveur sur http://localhost:${PORT}`);
-        console.log(`📝 Compte test: demo@example.com / demo123`);
-    });
-}

@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = 'https://21-chat.vercel.app';
+const API_URL = 'https://21-chat.vercel.app/';
 let currentUser = null;
 let currentConversation = null;
 let sessionId = localStorage.getItem('sessionId');
@@ -44,6 +44,11 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         }
     };
     
+    // Récupérer le sessionId depuis localStorage si pas en mémoire
+    if (!sessionId) {
+        sessionId = localStorage.getItem('sessionId');
+    }
+    
     if (sessionId) {
         options.headers['X-Session-Id'] = sessionId;
     }
@@ -75,8 +80,10 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
 async function login(email, password) {
     try {
         const data = await apiRequest('/login', 'POST', { email, password });
+        
         sessionId = data.sessionId;
         currentUser = data.user;
+        
         localStorage.setItem('sessionId', sessionId);
         localStorage.setItem('user', JSON.stringify(currentUser));
         
@@ -95,8 +102,10 @@ async function login(email, password) {
 async function register(username, email, password) {
     try {
         const data = await apiRequest('/register', 'POST', { username, email, password });
+        
         sessionId = data.sessionId;
         currentUser = data.user;
+        
         localStorage.setItem('sessionId', sessionId);
         localStorage.setItem('user', JSON.stringify(currentUser));
         
@@ -247,7 +256,6 @@ async function sendMessage() {
     const text = elements.messageInput?.value.trim();
     if (!text || !currentConversation) return;
     
-    // Afficher temporairement
     const tempMessage = `
         <div class="message sent">
             <div class="message-content">
@@ -335,10 +343,13 @@ function escapeHtml(text) {
 }
 
 function showNotification(message, type = 'info') {
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) return;
+    
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.innerHTML = `<i class="fas fa-info-circle"></i> ${escapeHtml(message)}`;
-    document.body.appendChild(notification);
+    toastContainer.appendChild(notification);
     setTimeout(() => notification.remove(), 3000);
 }
 
@@ -416,9 +427,12 @@ async function init() {
         elements.themeToggle.addEventListener('click', toggleTheme);
     }
     
+    const savedSessionId = localStorage.getItem('sessionId');
     const savedUser = localStorage.getItem('user');
-    if (sessionId && savedUser) {
+    
+    if (savedSessionId && savedUser) {
         try {
+            sessionId = savedSessionId;
             currentUser = JSON.parse(savedUser);
             updateAuthUI(true);
             await loadConversations();
