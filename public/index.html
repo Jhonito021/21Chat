@@ -2,9 +2,12 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#e94560">
-    <title>ChatSupabase - Messages entre amis</title>
+    <meta name="description" content="Application de chat entre amis">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <title>ChatLink - Messages entre amis</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -19,12 +22,18 @@
                         <i class="fas fa-comment-dots"></i>
                     </div>
                     <div class="logo-text">
-                        <h2>ChatSupabase</h2>
+                        <h2>ChatLink</h2>
                         <span>Premium</span>
                     </div>
                 </div>
                 <div class="header-actions">
-                    <button id="themeToggle" class="icon-btn">
+                    <button id="closeSidebarBtn" class="icon-btn mobile-only" style="display: none;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <button id="installBtn" class="icon-btn tooltip" data-tooltip="Installer l'application" style="display: none;">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button id="themeToggle" class="icon-btn tooltip" data-tooltip="Changer le thème">
                         <i class="fas fa-moon"></i>
                     </button>
                 </div>
@@ -55,22 +64,41 @@
             <div class="search-section">
                 <div class="search-bar">
                     <i class="fas fa-search"></i>
-                    <input type="text" id="searchConversation" placeholder="Rechercher...">
+                    <input type="text" id="searchConversation" placeholder="Rechercher une conversation...">
                 </div>
             </div>
 
             <div class="conversations-section">
                 <div class="section-header">
-                    <h3>Messages</h3>
-                    <button id="newConversationBtn" class="icon-btn">
+                    <div class="section-title">
+                        <i class="fas fa-comments"></i>
+                        <h3>Messages</h3>
+                    </div>
+                    <button id="newConversationBtn" class="fab-mini tooltip" data-tooltip="Nouvelle conversation">
                         <i class="fas fa-plus"></i>
                     </button>
                 </div>
                 <div class="conversations-list" id="conversationsList">
-                    <div class="empty-state">Aucune conversation</div>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <h4>Aucune conversation</h4>
+                        <p>Connectez-vous pour commencer</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="app-info">
+                    <span>Version 2.0</span>
+                    <span>© 2024 ChatLink</span>
                 </div>
             </div>
         </aside>
+
+        <!-- Overlay pour fermer le sidebar sur mobile -->
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
         <!-- Zone de chat -->
         <main class="chat-area">
@@ -83,16 +111,23 @@
                         <i class="fas fa-comment-dots"></i>
                     </div>
                     <div class="chat-details">
-                        <h3 id="currentChatName">ChatSupabase</h3>
+                        <h3 id="currentChatName">ChatLink</h3>
                         <span class="chat-status" id="chatStatus">Sélectionnez une conversation</span>
                     </div>
+                </div>
+                <div class="chat-actions">
+                    <button id="themeToggleMobile" class="icon-btn mobile-only">
+                        <i class="fas fa-moon"></i>
+                    </button>
                 </div>
             </div>
 
             <div class="messages-container" id="messagesContainer">
                 <div class="empty-chat-state">
-                    <i class="fas fa-comment-dots"></i>
-                    <h3>Bienvenue sur ChatSupabase</h3>
+                    <div class="empty-state-icon">
+                        <i class="fas fa-comment-dots"></i>
+                    </div>
+                    <h3>Bienvenue sur ChatLink</h3>
                     <p>Sélectionnez une conversation ou commencez-en une nouvelle</p>
                 </div>
             </div>
@@ -110,36 +145,63 @@
 
     <!-- Modal Connexion -->
     <div id="loginModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content modal-modern">
             <div class="modal-header">
-                <h3>ChatSupabase</h3>
+                <div class="modal-logo">
+                    <i class="fas fa-comment-dots"></i>
+                </div>
                 <button class="close-modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="auth-tabs">
-                    <button class="auth-tab active" data-tab="login">Connexion</button>
-                    <button class="auth-tab" data-tab="register">Inscription</button>
+                    <button class="auth-tab active" data-tab="login">
+                        <i class="fas fa-sign-in-alt"></i> Connexion
+                    </button>
+                    <button class="auth-tab" data-tab="register">
+                        <i class="fas fa-user-plus"></i> Inscription
+                    </button>
                 </div>
                 <form id="loginForm">
                     <div class="form-group">
-                        <input type="email" id="loginEmail" placeholder="Email" required>
+                        <div class="input-icon">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" id="loginEmail" placeholder="Email" required>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <input type="password" id="loginPassword" placeholder="Mot de passe" required>
+                        <div class="input-icon">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="loginPassword" placeholder="Mot de passe" required>
+                        </div>
                     </div>
-                    <button type="submit" class="btn-primary btn-large">Se connecter</button>
+                    <button type="submit" class="btn-primary btn-gradient btn-large">
+                        <span>Se connecter</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
                 </form>
                 <form id="registerForm" style="display: none;">
                     <div class="form-group">
-                        <input type="text" id="registerUsername" placeholder="Nom d'utilisateur" required>
+                        <div class="input-icon">
+                            <i class="fas fa-user"></i>
+                            <input type="text" id="registerUsername" placeholder="Nom d'utilisateur" required>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <input type="email" id="registerEmail" placeholder="Email" required>
+                        <div class="input-icon">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" id="registerEmail" placeholder="Email" required>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <input type="password" id="registerPassword" placeholder="Mot de passe" required>
+                        <div class="input-icon">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="registerPassword" placeholder="Mot de passe" required>
+                        </div>
                     </div>
-                    <button type="submit" class="btn-primary btn-large">S'inscrire</button>
+                    <button type="submit" class="btn-primary btn-gradient btn-large">
+                        <span>S'inscrire</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
                 </form>
             </div>
         </div>
@@ -149,63 +211,23 @@
     <div id="newConversationModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Nouvelle conversation</h3>
+                <h3><i class="fas fa-user-plus"></i> Nouvelle conversation</h3>
                 <button class="close-modal">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <input type="text" id="searchUser" placeholder="Nom d'utilisateur...">
+                <div class="search-user-box">
+                    <div class="input-icon">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchUser" placeholder="Nom d'utilisateur...">
+                    </div>
                 </div>
                 <div class="users-list" id="usersList"></div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <div class="toast-container" id="toastContainer"></div>
+
     <script src="script.js"></script>
-    <script>
-    // Enregistrement du Service Worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js')
-                .then(registration => {
-                    console.log('Service Worker enregistré avec succès:', registration.scope);
-                    
-                    // Vérifier les mises à jour
-                    registration.addEventListener('updatefound', () => {
-                        const newWorker = registration.installing;
-                        console.log('Nouveau Service Worker trouvé:', newWorker);
-                        
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                console.log('Nouvelle version disponible - rechargez la page');
-                                showNotification('Une nouvelle version est disponible', 'info');
-                            }
-                        });
-                    });
-                })
-                .catch(error => {
-                    console.error('Erreur d\'enregistrement du Service Worker:', error);
-                });
-        });
-    }
-    
-    // Gestion de la synchronisation en arrière-plan
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-        navigator.serviceWorker.ready.then(registration => {
-            registration.sync.register('sync-messages')
-                .catch(error => console.error('Erreur d\'enregistrement sync:', error));
-        });
-    }
-    
-    // Gestion des notifications push
-    if ('Notification' in window && 'PushManager' in window) {
-        Notification.requestPermission().then(permission => {
-            if (permission === 'granted') {
-                console.log('Notifications push autorisées');
-            }
-        });
-    }
-</script>
 </body>
 </html>

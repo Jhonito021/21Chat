@@ -1,9 +1,9 @@
 // Configuration
-const API_URL = window.location.origin; // Modifier si votre backend est sur une autre URL
-let socket = null;
+const API_URL = '';
 let currentUser = null;
 let currentConversation = null;
 let sessionId = localStorage.getItem('sessionId');
+let pollingInterval = null;
 
 // Éléments DOM
 const elements = {
@@ -26,20 +26,22 @@ const elements = {
     authTabs: document.querySelectorAll('.auth-tab'),
     searchUser: document.getElementById('searchUser'),
     usersList: document.getElementById('usersList'),
-    mobileMenuBtn: document.getElementById('mobileMenuBtn'),
-    sidebar: document.getElementById('sidebar'),
     loginEmail: document.getElementById('loginEmail'),
     loginPassword: document.getElementById('loginPassword'),
     registerUsername: document.getElementById('registerUsername'),
     registerEmail: document.getElementById('registerEmail'),
-    registerPassword: document.getElementById('registerPassword')
+    registerPassword: document.getElementById('registerPassword'),
+    mobileMenuBtn: document.getElementById('mobileMenuBtn'),
+    sidebar: document.getElementById('sidebar')
 };
 
 // ==================== API REQUESTS ====================
 async function apiRequest(endpoint, method = 'GET', data = null) {
     const options = {
         method,
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+            'Content-Type': 'application/json'
+        }
     };
     
     if (sessionId) {
@@ -50,45 +52,26 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         options.body = JSON.stringify(data);
     }
     
-    const response = await fetch(`${API_URL}/api${endpoint}`, options);
-    const result = await response.json();
-    
-    if (!result.success) {
-        if (response.status === 401) {
-            logout();
-            throw new Error('Session expirée');
+    try {
+        const response = await fetch(`${API_URL}/api${endpoint}`, options);
+        const result = await response.json();
+        
+        if (!result.success) {
+            if (response.status === 401) {
+                logout();
+                throw new Error('Session expirée');
+            }
+            throw new Error(result.message);
         }
-        throw new Error(result.message);
+        
+        return result.data;
+    } catch (error) {
+        console.error('API Error:', error);
+        throw error;
     }
-    
-    return result.data;
 }
 
-// ==================== SOCKET.IO (pour les statuts en ligne) ====================
-function initSocket() {
-    if (socket) socket.disconnect();
-    
-    socket = io(API_URL || window.location.origin, {
-        auth: { userId: currentUser?.id },
-        transports: ['websocket', 'polling']
-    });
-    
-    socket.on('connect', () => console.log('Socket connecté'));
-    
-    socket.on('user_status_change', (data) => {
-        updateUserStatusUI(data.userId, data.status);
-    });
-    
-    // Polling pour les nouveaux messages (fallback)
-    setInterval(async () => {
-        if (currentConversation) {
-            await loadMessages();
-        }
-        await loadConversations();
-    }, 3000);
-}
-
-// ==================== AUTH ====================
+// ==================== AUTHENTIFICATION ====================
 async function login(email, password) {
     try {
         const data = await apiRequest('/login', 'POST', { email, password });
@@ -97,11 +80,13 @@ async function login(email, password) {
         localStorage.setItem('sessionId', sessionId);
         localStorage.setItem('user', JSON.stringify(currentUser));
         
-        initSocket();
         updateAuthUI(true);
         closeModal(elements.loginModal);
         await loadConversations();
         showNotification('Connecté avec succès!', 'success');
+        
+        startPolling();
+        
     } catch (error) {
         showNotification(error.message, 'error');
     }
@@ -115,23 +100,27 @@ async function register(username, email, password) {
         localStorage.setItem('sessionId', sessionId);
         localStorage.setItem('user', JSON.stringify(currentUser));
         
-        initSocket();
         updateAuthUI(true);
         closeModal(elements.loginModal);
         await loadConversations();
         showNotification('Inscription réussie!', 'success');
+        
+        startPolling();
+        
     } catch (error) {
         showNotification(error.message, 'error');
     }
 }
 
 function logout() {
-    if (socket) socket.disconnect();
+    if (pollingInterval) clearInterval(pollingInterval);
+    
     localStorage.removeItem('sessionId');
     localStorage.removeItem('user');
     sessionId = null;
     currentUser = null;
     currentConversation = null;
+    
     updateAuthUI(false);
     if (elements.conversationsList) {
         elements.conversationsList.innerHTML = '<div class="empty-state">Aucune conversation</div>';
@@ -161,6 +150,19 @@ function updateAuthUI(isLoggedIn) {
     }
 }
 
+// ==================== POLLING ====================
+function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(async () => {
+        if (currentUser) {
+            await loadConversations();
+            if (currentConversation) {
+                await loadMessages();
+            }
+        }
+    }, 3000);
+}
+
 // ==================== CONVERSATIONS ====================
 async function loadConversations() {
     if (!currentUser) return;
@@ -169,14 +171,14 @@ async function loadConversations() {
         const conversations = await apiRequest('/conversations', 'GET');
         
         if (!conversations.length) {
-            elements.conversationsList.innerHTML = '<div class="empty-state">Aucune conversation</div>';
+            elements.conversationsList.innerHTML = '<div class="empty-state">Aucune conversation<br><small>Cliquez sur + pour en créer une</small></div>';
             return;
         }
         
         elements.conversationsList.innerHTML = conversations.map(conv => `
             <div class="conversation-item" data-id="${conv.id}" data-other-user-id="${conv.other_user_id}">
                 <div class="conversation-avatar">
-                    <i class="fas fa-user-circle"></i>
+                    <i class="fas fa-${conv.other_avatar || 'user-circle'}"></i>
                     ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
                     ${conv.other_status === 'online' ? '<span class="online-indicator"></span>' : ''}
                 </div>
@@ -224,7 +226,7 @@ async function loadMessages() {
 
 function displayMessages(messages) {
     if (!messages.length) {
-        elements.messagesContainer.innerHTML = '<div class="empty-chat-state"><i class="fas fa-comment-dots"></i><p>Aucun message</p></div>';
+        elements.messagesContainer.innerHTML = '<div class="empty-chat-state">Aucun message</div>';
         return;
     }
     
@@ -264,6 +266,7 @@ async function sendMessage() {
             message: text
         });
         await loadMessages();
+        await loadConversations();
     } catch (error) {
         showNotification('Erreur lors de l\'envoi', 'error');
         await loadMessages();
@@ -299,7 +302,7 @@ async function searchUsers(searchTerm) {
         elements.usersList.innerHTML = users.map(user => `
             <div class="user-item">
                 <div class="user-item-info">
-                    <i class="fas fa-user-circle"></i>
+                    <i class="fas fa-${user.avatar || 'user-circle'}"></i>
                     <div>
                         <strong>${escapeHtml(user.username)}</strong>
                         <div style="font-size: 12px;">${user.status === 'online' ? '🟢 En ligne' : '⚫ Hors ligne'}</div>
@@ -318,26 +321,10 @@ async function searchUsers(searchTerm) {
 }
 
 // ==================== UTILITAIRES ====================
-function updateUserStatusUI(userId, status) {
-    const conversationItems = document.querySelectorAll('.conversation-item');
-    conversationItems.forEach(item => {
-        if (parseInt(item.dataset.otherUserId) === userId) {
-            const avatar = item.querySelector('.conversation-avatar');
-            const existingIndicator = avatar.querySelector('.online-indicator');
-            
-            if (status === 'online' && !existingIndicator) {
-                const indicator = document.createElement('span');
-                indicator.className = 'online-indicator';
-                avatar.appendChild(indicator);
-            } else if (status !== 'online' && existingIndicator) {
-                existingIndicator.remove();
-            }
-        }
-    });
-}
-
 function scrollToBottom() {
-    elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
+    if (elements.messagesContainer) {
+        elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
+    }
 }
 
 function escapeHtml(text) {
@@ -367,8 +354,10 @@ function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light-theme';
     document.body.className = savedTheme;
     const icon = savedTheme === 'dark-theme' ? 'fa-sun' : 'fa-moon';
-    const iconEl = elements.themeToggle?.querySelector('i');
-    if (iconEl) iconEl.className = `fas ${icon}`;
+    if (elements.themeToggle) {
+        const iconEl = elements.themeToggle.querySelector('i');
+        if (iconEl) iconEl.className = `fas ${icon}`;
+    }
 }
 
 function toggleTheme() {
@@ -377,8 +366,10 @@ function toggleTheme() {
     document.body.className = newTheme;
     localStorage.setItem('theme', newTheme);
     const icon = isDark ? 'fa-moon' : 'fa-sun';
-    const iconEl = elements.themeToggle?.querySelector('i');
-    if (iconEl) iconEl.className = `fas ${icon}`;
+    if (elements.themeToggle) {
+        const iconEl = elements.themeToggle.querySelector('i');
+        if (iconEl) iconEl.className = `fas ${icon}`;
+    }
 }
 
 // ==================== MODALS ====================
@@ -430,8 +421,8 @@ async function init() {
         try {
             currentUser = JSON.parse(savedUser);
             updateAuthUI(true);
-            initSocket();
             await loadConversations();
+            startPolling();
         } catch (error) {
             logout();
         }
@@ -449,6 +440,10 @@ async function init() {
     
     if (elements.sendMessageBtn) {
         elements.sendMessageBtn.addEventListener('click', sendMessage);
+    }
+    
+    if (elements.searchUser) {
+        elements.searchUser.addEventListener('input', (e) => searchUsers(e.target.value));
     }
 }
 
@@ -470,8 +465,6 @@ elements.registerForm?.addEventListener('submit', (e) => {
 elements.authTabs?.forEach(tab => {
     tab.addEventListener('click', () => switchAuthTab(tab.dataset.tab));
 });
-
-elements.searchUser?.addEventListener('input', (e) => searchUsers(e.target.value));
 
 document.querySelectorAll('.close-modal').forEach(btn => {
     btn.addEventListener('click', () => {
