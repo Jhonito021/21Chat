@@ -1,7 +1,6 @@
 {
   "name": "chat-supabase-vercel",
   "version": "1.0.0",
-  "description": "Chat app with Supabase and Vercel",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "express": "^4.18.2",
