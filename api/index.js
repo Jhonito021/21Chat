@@ -3,15 +3,30 @@ const cors = require('cors');
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// Middleware - Important pour Vercel
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-Session-Id']
+}));
+
 app.use(express.json());
 
-// Stockage temporaire en mémoire
+// Stockage en mémoire
 const users = [];
 const sessions = {};
 
-// Helper functions
+// Créer un utilisateur de test au démarrage
+users.push({
+    id: 1,
+    username: 'Demo',
+    email: 'demo@example.com',
+    password: 'demo123',
+    avatar: 'user-circle',
+    color: '#e94560'
+});
+
+// Fonctions
 function createSession(userId) {
     const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
     sessions[sessionId] = { userId, createdAt: Date.now() };
@@ -26,12 +41,14 @@ function getUserIdFromSession(sessionId) {
     return null;
 }
 
+// ==================== ROUTES ====================
+
 // Health check
 app.get('/api/health', (req, res) => {
-    res.json({ success: true, message: 'API OK' });
+    res.json({ success: true, message: 'API OK', usersCount: users.length });
 });
 
-// Inscription (version sans bcrypt pour test)
+// Inscription
 app.post('/api/register', (req, res) => {
     try {
         const { username, email, password } = req.body;
@@ -48,12 +65,12 @@ app.post('/api/register', (req, res) => {
             return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
         }
         
-        // Créer l'utilisateur (mot de passe en clair pour test)
+        // Créer l'utilisateur
         const newUser = {
             id: users.length + 1,
             username,
             email,
-            password: password, // ⚠️ En clair pour test uniquement
+            password: password,
             avatar: 'user-circle',
             color: '#e94560'
         };
@@ -79,25 +96,41 @@ app.post('/api/register', (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Erreur:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('❌ Erreur inscription:', error);
+        res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
 });
 
-// Connexion (version sans bcrypt)
+// Connexion - CORRIGÉE
 app.post('/api/login', (req, res) => {
     try {
         const { email, password } = req.body;
         
-        console.log('🔑 Connexion:', email);
+        console.log('🔑 Tentative de connexion:', { email, password });
+        console.log('📋 Utilisateurs existants:', users.map(u => ({ email: u.email, password: u.password })));
         
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
+        }
+        
+        // Chercher l'utilisateur
         const user = users.find(u => u.email === email);
         
-        if (!user || user.password !== password) {
+        if (!user) {
+            console.log('❌ Utilisateur non trouvé:', email);
             return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
         }
         
+        // Vérifier le mot de passe
+        if (user.password !== password) {
+            console.log('❌ Mot de passe incorrect pour:', email);
+            return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
+        }
+        
+        // Créer la session
         const sessionId = createSession(user.id);
+        
+        console.log('✅ Connexion réussie:', user.username);
         
         res.json({
             success: true,
@@ -114,7 +147,7 @@ app.post('/api/login', (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Erreur:', error);
+        console.error('❌ Erreur connexion:', error);
         res.status(500).json({ success: false, message: 'Erreur serveur' });
     }
 });
@@ -122,15 +155,21 @@ app.post('/api/login', (req, res) => {
 // Déconnexion
 app.post('/api/logout', (req, res) => {
     const sessionId = req.headers['x-session-id'];
-    if (sessionId) delete sessions[sessionId];
+    if (sessionId) {
+        delete sessions[sessionId];
+    }
     res.json({ success: true });
 });
 
-// Vérifier session
+// Vérifier session - CORRIGÉE
 app.get('/api/verify', (req, res) => {
     const sessionId = req.headers['x-session-id'];
+    
+    console.log('🔍 Vérification session:', sessionId);
+    console.log('📋 Sessions actives:', Object.keys(sessions));
+    
     if (!sessionId) {
-        return res.status(401).json({ success: false, message: 'Non authentifié' });
+        return res.status(401).json({ success: false, message: 'Session manquante' });
     }
     
     const userId = getUserIdFromSession(sessionId);
@@ -157,43 +196,73 @@ app.get('/api/verify', (req, res) => {
 
 // Conversations
 app.get('/api/conversations', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    const userId = getUserIdFromSession(sessionId);
+    
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
+    }
+    
     res.json({ success: true, data: [] });
 });
 
 app.get('/api/messages/:conversationId', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    const userId = getUserIdFromSession(sessionId);
+    
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
+    }
+    
     res.json({ success: true, data: [] });
 });
 
 app.post('/api/messages', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    const userId = getUserIdFromSession(sessionId);
+    
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
+    }
+    
     res.json({ success: true, data: { id: Date.now() } });
 });
 
 app.post('/api/conversations', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    const userId = getUserIdFromSession(sessionId);
+    
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
+    }
+    
     res.json({ success: true, data: { conversationId: Date.now() } });
 });
 
 app.get('/api/users/search', (req, res) => {
+    const sessionId = req.headers['x-session-id'];
+    const userId = getUserIdFromSession(sessionId);
+    
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'Non authentifié' });
+    }
+    
     const { q } = req.query;
     if (!q) {
         return res.json({ success: true, data: [] });
     }
     
-    const filtered = users.filter(u => 
-        u.username.toLowerCase().includes(q.toLowerCase()) ||
-        u.email.toLowerCase().includes(q.toLowerCase())
-    ).slice(0, 10);
+    const filtered = users
+        .filter(u => u.id !== userId && u.username.toLowerCase().includes(q.toLowerCase()))
+        .map(u => ({
+            id: u.id,
+            username: u.username,
+            email: u.email,
+            avatar: u.avatar,
+            status: 'offline'
+        }));
     
     res.json({ success: true, data: filtered });
-});
-
-// Créer un utilisateur de test au démarrage
-users.push({
-    id: 1,
-    username: 'Demo',
-    email: 'demo@example.com',
-    password: 'demo123',
-    avatar: 'user-circle',
-    color: '#e94560'
 });
 
 // Export pour Vercel
