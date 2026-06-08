@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = '';
+const API_URL = 'https://21-chat.vercel.app';
 let currentUser = null;
 let currentConversation = null;
 let sessionId = localStorage.getItem('sessionId');
