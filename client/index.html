@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>PeerCall - Appels audio & chat</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* ========== ÉCRANS D'AUTHENTIFICATION ========== */
+        .auth-container {
+            max-width: 450px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            padding: 40px 30px;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .auth-header h1 {
+            font-size: 1.8rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .auth-header i {
+            font-size: 3rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .auth-header p {
+            color: #6c757d;
+            font-size: 0.8rem;
+            margin-top: 5px;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .input-group i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #764ba2;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 14px 15px 14px 45px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 1rem;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #764ba2;
+        }
+
+        .auth-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .switch-auth {
+            text-align: center;
+            margin-top: 20px;
+            color: #6c757d;
+        }
+
+        .switch-auth a {
+            color: #764ba2;
+            cursor: pointer;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 10px;
+            display: none;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* ========== CHAT CONTAINER ========== */
+        .chat-container {
+            max-width: 1000px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: none;
+            flex-direction: column;
+            height: 90vh;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #5b3e8f 0%, #3a2570 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .header-title h1 {
+            font-size: 1.3rem;
+        }
+
+        .header-title p {
+            font-size: 0.7rem;
+            opacity: 0.8;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 15px;
+            border-radius: 50px;
+        }
+
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255,0,0,0.5);
+        }
+
+        .peer-info {
+            background: #4a3a7a;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .my-id-box {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        #myId {
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .copy-btn, .refresh-btn {
+            background: rgba(255,255,255,0.3);
+            border: none;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .refresh-btn:hover {
+            background: #28a745;
+        }
+
+        .expiration-timer {
+            background: rgba(0,0,0,0.3);
+            padding: 5px 12px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-family: monospace;
+        }
+
+        .expiration-timer.warning {
+            background: #dc3545;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .server-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .call-area {
+            background: linear-gradient(135deg, #2d1b4e 0%, #1a0f30 100%);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .call-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: bold;
+        }
+
+        .call-btn.end-call {
+            background: #dc3545;
+        }
+
+        .call-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .call-status {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .connection-area {
+            background: #f8f9fa;
+            padding: 12px 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        #peerId {
+            flex: 2;
+            padding: 8px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-family: monospace;
+        }
+
+        .btn-connect {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #e9ecef;
+            padding: 5px 15px;
+            border-radius: 25px;
+            font-size: 0.8rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #dc3545;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+        }
+
+        .message-content {
+            max-width: 70%;
+        }
+
+        .message-sender {
+            font-weight: bold;
+            font-size: 0.75rem;
+            margin-bottom: 3px;
+            color: #495057;
+        }
+
+        .message-bubble {
+            background: #f1f3f5;
+            padding: 8px 14px;
+            border-radius: 18px;
+            font-size: 0.9rem;
+        }
+
+        .message.mine {
+            flex-direction: row-reverse;
+        }
+
+        .message.mine .message-content {
+            text-align: right;
+        }
+
+        .message.mine .message-bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message-time {
+            font-size: 0.65rem;
+            color: #6c757d;
+            margin-top: 3px;
+        }
+
+        .message-input-area {
+            background: #f8f9fa;
+            padding: 15px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+        }
+
+        .btn-send {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .btn-send:disabled {
+            opacity: 0.5;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 15px;
+            background: #f8f9fa;
+            padding: 8px 15px;
+            border-top: 1px solid #e0e0e0;
+            justify-content: flex-end;
+        }
+
+        .toolbar button {
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+        }
+
+        .toolbar button:hover {
+            color: #dc3545;
+        }
+
+        @media (max-width: 700px) {
+            .call-area { flex-direction: column; align-items: center; }
+            .message-content { max-width: 85%; }
+            .peer-info { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <!-- AUTHENTIFICATION -->
+    <div id="authScreen" class="auth-container">
+        <div class="auth-header">
+            <i class="fas fa-phone-alt"></i>
+            <h1>PeerCall</h1>
+            <p>Appels audio & chat sécurisé<br>Serveur IP Public</p>
+        </div>
+        <div id="errorMsg" class="error-message"></div>
+        <div id="loginForm">
+            <div class="input-group">
+                <i class="fas fa-user"></i>
+                <input type="text" id="loginUsername" placeholder="Nom d'utilisateur">
+            </div>
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="loginPassword" placeholder="Mot de passe">
+            </div>
+            <button class="auth-btn" onclick="login()"><i class="fas fa-sign-in-alt"></i> Se connecter</button>
+            <div class="switch-auth">Pas de compte ? <a onclick="showRegister()">Créer un compte</a></div>
+        </div>
+        <div id="registerForm" style="display:none;">
+            <div class="input-group">
+                <i class="fas fa-user"></i>
+                <input type="text" id="registerUsername" placeholder="Nom d'utilisateur">
+            </div>
+            <div class="input-group">
+                <i class="fas fa-envelope"></i>
+                <input type="email" id="registerEmail" placeholder="Email">
+            </div>
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="registerPassword" placeholder="Mot de passe (min 4)">
+            </div>
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="registerConfirm" placeholder="Confirmer">
+            </div>
+            <button class="auth-btn" onclick="register()"><i class="fas fa-user-plus"></i> Créer un compte</button>
+            <div class="switch-auth">Déjà un compte ? <a onclick="showLogin()">Se connecter</a></div>
+        </div>
+    </div>
+
+    <!-- CHAT + APPELS AUDIO -->
+    <div id="chatScreen" class="chat-container">
+        <div class="chat-header">
+            <div class="header-title">
+                <h1><i class="fas fa-phone-alt"></i> PeerCall</h1>
+                <p>Appels audio chiffrés</p>
+            </div>
+            <div class="user-info">
+                <i class="fas fa-user-circle"></i>
+                <span id="currentUsername"></span>
+                <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+            </div>
+        </div>
+
+        <div class="peer-info">
+            <div class="my-id-box">
+                <i class="fas fa-id-card"></i>
+                <span>Votre ID :</span>
+                <strong id="myId">Connexion...</strong>
+                <button class="copy-btn" onclick="copyMyId()"><i class="fas fa-copy"></i></button>
+                <button class="refresh-btn" onclick="refreshId()"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div class="server-badge">
+                <i class="fas fa-server"></i>
+                <span id="serverUrl">Serveur public</span>
+            </div>
+            <div class="expiration-timer" id="expirationTimer">
+                <i class="fas fa-hourglass-half"></i> <span id="timerSeconds">30</span>s
+            </div>
+        </div>
+
+        <div class="call-area">
+            <button class="call-btn" id="callBtn" onclick="startAudioCall()" disabled>
+                <i class="fas fa-phone"></i> Appeler
+            </button>
+            <button class="call-btn end-call" id="endCallBtn" onclick="endAudioCall()" style="display:none;">
+                <i class="fas fa-phone-slash"></i> Raccrocher
+            </button>
+            <div class="call-status" id="callStatus">
+                <span id="callStatusText">📞 Prêt</span>
+            </div>
+        </div>
+
+        <div class="connection-area">
+            <input type="text" id="peerId" placeholder="ID du correspondant">
+            <button class="btn-connect" onclick="connectToPeer()">
+                <i class="fas fa-link"></i> Connecter chat
+            </button>
+            <div class="status-badge">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Déconnecté</span>
+            </div>
+        </div>
+
+        <div class="messages-area" id="messagesArea">
+            <div style="text-align: center; color: #6c757d; padding: 40px;">
+                <i class="fas fa-info-circle"></i>
+                <p>Connectez-vous à un pair pour chatter</p>
+            </div>
+        </div>
+
+        <div class="message-input-area">
+            <input type="text" id="messageInput" placeholder="Message texte..." onkeypress="handleKeyPress(event)">
+            <button class="btn-send" onclick="sendMessage()" id="sendBtn" disabled>
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+
+        <div class="toolbar">
+            <button onclick="clearHistory()"><i class="fas fa-trash-alt"></i> Effacer historique</button>
+            <button onclick="exportHistory()"><i class="fas fa-download"></i> Exporter</button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script>
+        // ⚠️ ⚠️ ⚠️ MODIFIEZ ICI AVEC VOTRE URL RENDER ⚠️ ⚠️ ⚠️
+        // Exemple: const SERVER_HOST = 'peerjs-server-moi123.onrender.com';
+        const SERVER_HOST = 'localhost';  // <--- CHANGEZ ICI APRÈS DÉPLOIEMENT
+        // ==================================================
+        
+        // Configuration complète avec serveur IP public
+        const PEER_CONFIG = {
+            host: SERVER_HOST,
+            port: SERVER_HOST === 'localhost' ? 9000 : 443,
+            path: '/peerjs',
+            secure: SERVER_HOST !== 'localhost',
+            debug: 2,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ]
+            }
+        };
+
+        // Afficher l'URL du serveur dans l'interface
+        document.getElementById('serverUrl').textContent = SERVER_HOST === 'localhost' ? 'Local (test)' : SERVER_HOST;
+
+        // ========== VARIABLES ==========
+        let peer = null;
+        let dataConn = null;
+        let mediaCall = null;
+        let localStream = null;
+        let currentPeerId = null;
+        let currentUser = null;
+        let isInCall = false;
+        
+        // Gestion d'expiration (30 secondes)
+        let expirationTimer = null;
+        let inactivityTimer = null;
+        let remainingSeconds = 30;
+        let isIdValid = true;
+        
+        // Stockage
+        const USERS_KEY = 'peercall_users';
+        const MESSAGES_PREFIX = 'peercall_msgs_';
+
+        // ========== AUTHENTIFICATION ==========
+        function showError(msg) {
+            const errDiv = document.getElementById('errorMsg');
+            errDiv.textContent = msg;
+            errDiv.style.display = 'block';
+            setTimeout(() => errDiv.style.display = 'none', 3000);
+        }
+
+        function showRegister() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+        }
+
+        function showLogin() {
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+        }
+
+        function register() {
+            const username = document.getElementById('registerUsername').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            const confirm = document.getElementById('registerConfirm').value;
+
+            if (!username || !password) return showError('Champs requis');
+            if (password.length < 4) return showError('Mot de passe trop court');
+            if (password !== confirm) return showError('Mots de passe différents');
+
+            let users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
+            if (users[username]) return showError('Nom déjà pris');
+
+            users[username] = { username, email, password, createdAt: new Date().toISOString() };
+            localStorage.setItem(USERS_KEY, JSON.stringify(users));
+            localStorage.setItem(MESSAGES_PREFIX + username, JSON.stringify([]));
+            showError('✅ Compte créé ! Connectez-vous');
+            showLogin();
+        }
+
+        function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            let users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
+            if (!users[username] || users[username].password !== password) {
+                return showError('Identifiants incorrects');
+            }
+            currentUser = username;
+            localStorage.setItem('peercall_current_user', username);
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('chatScreen').style.display = 'flex';
+            document.getElementById('currentUsername').textContent = username;
+            initPeer();
+            loadUserHistory();
+            startInactivityMonitor();
+        }
+
+        function logout() {
+            if (mediaCall) endAudioCall();
+            resetExpirationTimer();
+            if (inactivityTimer) clearInterval(inactivityTimer);
+            if (peer) peer.destroy();
+            localStorage.removeItem('peercall_current_user');
+            document.getElementById('chatScreen').style.display = 'none';
+            document.getElementById('authScreen').style.display = 'block';
+        }
+
+        // ========== GESTION D'EXPIRATION 30 SECONDES ==========
+        
+        function startInactivityMonitor() {
+            const resetInactivity = () => {
+                if (!isIdValid) return;
+                resetExpirationTimer();
+            };
+            
+            const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+            events.forEach(event => {
+                document.addEventListener(event, resetInactivity);
+            });
+            
+            resetExpirationTimer();
+        }
+        
+        function resetExpirationTimer() {
+            if (expirationTimer) clearTimeout(expirationTimer);
+            if (inactivityTimer) clearInterval(inactivityTimer);
+            
+            remainingSeconds = 30;
+            updateTimerDisplay();
+            isIdValid = true;
+            
+            const timerDiv = document.getElementById('expirationTimer');
+            timerDiv.classList.remove('warning');
+            
+            inactivityTimer = setInterval(() => {
+                if (remainingSeconds > 0 && isIdValid) {
+                    remainingSeconds--;
+                    updateTimerDisplay();
+                    
+                    if (remainingSeconds <= 5) {
+                        timerDiv.classList.add('warning');
+                    }
+                    
+                    if (remainingSeconds === 0) {
+                        clearInterval(inactivityTimer);
+                        expireId();
+                    }
+                }
+            }, 1000);
+        }
+        
+        function updateTimerDisplay() {
+            const secondsSpan = document.getElementById('timerSeconds');
+            if (secondsSpan) secondsSpan.textContent = remainingSeconds;
+        }
+        
+        function expireId() {
+            if (!isIdValid) return;
+            
+            isIdValid = false;
+            addSystemMessage('⚠️ VOTRE ID A EXPIRÉ (30s sans activité) ! Rafraîchissez votre ID.', 'error');
+            
+            document.getElementById('callBtn').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+            
+            if (dataConn) {
+                dataConn.close();
+                dataConn = null;
+            }
+            if (mediaCall) endAudioCall();
+            
+            updateChatStatus(false);
+            
+            const idElement = document.getElementById('myId');
+            idElement.innerHTML = '<span style="color:#ff6b6b;">EXPIRÉ</span>';
+            idElement.style.textDecoration = 'line-through';
+        }
+        
+        function refreshId() {
+            addSystemMessage('🔄 Rafraîchissement de l\'ID...', 'info');
+            
+            if (peer) peer.destroy();
+            
+            isIdValid = true;
+            remainingSeconds = 30;
+            
+            const idElement = document.getElementById('myId');
+            idElement.style.textDecoration = 'none';
+            
+            const timerDiv = document.getElementById('expirationTimer');
+            timerDiv.classList.remove('warning');
+            
+            initPeer();
+            resetExpirationTimer();
+        }
+        
+        // ========== HISTORIQUE ==========
+        function getUserMessagesKey() { return MESSAGES_PREFIX + currentUser; }
+        
+        function loadUserHistory() {
+            const stored = localStorage.getItem(getUserMessagesKey());
+            if (stored) {
+                const messages = JSON.parse(stored);
+                const area = document.getElementById('messagesArea');
+                area.innerHTML = '';
+                messages.forEach(m => displayMessage(m.text, m.sender, m.time, false));
+                if (messages.length === 0) area.innerHTML = '<div style="text-align:center;color:#6c757d;padding:40px;"><i class="fas fa-info-circle"></i><p>Aucun message</p></div>';
+            }
+        }
+
+        function saveMessage(text, sender, time) {
+            const key = getUserMessagesKey();
+            let msgs = JSON.parse(localStorage.getItem(key) || '[]');
+            msgs.push({ text, sender, time, date: new Date().toISOString() });
+            if (msgs.length > 500) msgs = msgs.slice(-500);
+            localStorage.setItem(key, JSON.stringify(msgs));
+        }
+
+        function clearHistory() {
+            if (confirm('Effacer tout l\'historique ?')) {
+                localStorage.setItem(getUserMessagesKey(), JSON.stringify([]));
+                document.getElementById('messagesArea').innerHTML = '<div style="text-align:center;color:#6c757d;padding:40px;"><i class="fas fa-comment-slash"></i><p>Historique effacé</p></div>';
+                addSystemMessage('Historique effacé');
+            }
+        }
+
+        function exportHistory() {
+            const data = localStorage.getItem(getUserMessagesKey());
+            if (!data || JSON.parse(data).length === 0) return alert('Aucun historique');
+            const blob = new Blob([data], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `peercall_${currentUser}_${Date.now()}.json`;
+            a.click();
+        }
+
+        // ========== AFFICHAGE ==========
+        function addSystemMessage(text, type = 'info') {
+            const area = document.getElementById('messagesArea');
+            if (area.children.length === 1 && area.children[0].style?.textAlign === 'center') area.innerHTML = '';
+            const div = document.createElement('div');
+            div.style.cssText = 'text-align:center;font-size:0.75rem;color:#6c757d;margin:5px 0;padding:4px;background:#f8f9fa;border-radius:15px';
+            const icon = type === 'error' ? 'exclamation-triangle' : 'info-circle';
+            div.innerHTML = `<i class="fas fa-${icon}"></i> ${text}`;
+            area.appendChild(div);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        function displayMessage(text, sender, time, save = true) {
+            const area = document.getElementById('messagesArea');
+            if (area.children.length === 1 && area.children[0].style?.textAlign === 'center') area.innerHTML = '';
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${sender === 'Moi' ? 'mine' : ''}`;
+            msgDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas ${sender === 'Moi' ? 'fa-user' : 'fa-user-friends'}"></i></div>
+                <div class="message-content">
+                    <div class="message-sender">${sender}</div>
+                    <div class="message-bubble">${escapeHtml(text)}</div>
+                    <div class="message-time"><i class="far fa-clock"></i> ${time}</div>
+                </div>
+            `;
+            area.appendChild(msgDiv);
+            area.scrollTop = area.scrollHeight;
+            if (save) saveMessage(text, sender, time);
+        }
+
+        function escapeHtml(str) { 
+            return str.replace(/[&<>]/g, function(m){
+                if(m==='&') return '&amp;'; 
+                if(m==='<') return '&lt;'; 
+                if(m==='>') return '&gt;'; 
+                return m;
+            }); 
+        }
+
+        function addMessage(sender, text) {
+            const time = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+            displayMessage(text, sender, time, true);
+        }
+
+        // ========== PEERJS ==========
+        function initPeer() {
+            addSystemMessage('Connexion au serveur ' + (SERVER_HOST === 'localhost' ? 'local' : SERVER_HOST) + '...');
+            
+            peer = new Peer(PEER_CONFIG);
+            
+            peer.on('open', id => {
+                document.getElementById('myId').innerHTML = id;
+                currentPeerId = id;
+                addSystemMessage('✅ Connecté - ID: ' + id);
+                document.getElementById('callBtn').disabled = false;
+                isIdValid = true;
+                document.getElementById('sendBtn').disabled = !(dataConn && dataConn.open);
+            });
+            
+            peer.on('connection', conn => {
+                if (!isIdValid) {
+                    conn.close();
+                    addSystemMessage('❌ ID expiré, connexion refusée');
+                    return;
+                }
+                dataConn = conn;
+                addSystemMessage('✅ Connexion chat établie');
+                updateChatStatus(true);
+                setupDataConnection();
+            });
+            
+            peer.on('call', async call => {
+                if (!isIdValid) {
+                    call.close();
+                    addSystemMessage('❌ ID expiré, appel refusé');
+                    return;
+                }
+                addSystemMessage('📞 Appel entrant...');
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    call.answer(stream);
+                    setupCall(call, stream);
+                } catch (err) {
+                    addSystemMessage('❌ Impossible d\'accéder au micro');
+                }
+            });
+            
+            peer.on('error', err => {
+                console.error(err);
+                let msg = 'Erreur: ';
+                if (err.type === 'peer-unavailable') msg += 'ID indisponible';
+                else if (err.type === 'network') msg += 'Problème réseau - Vérifiez votre connexion 4G';
+                else msg += err.type;
+                addSystemMessage('❌ ' + msg);
+            });
+            
+            peer.on('disconnected', () => {
+                addSystemMessage('⚠️ Déconnecté du serveur');
+                updateChatStatus(false);
+            });
+        }
+
+        function connectToPeer() {
+            const id = document.getElementById('peerId').value.trim();
+            if (!id) return addSystemMessage('Entrez un ID');
+            if (id === currentPeerId) return addSystemMessage('Impossible de se connecter à soi-même');
+            if (!isIdValid) return addSystemMessage('⚠️ Votre ID est expiré, rafraîchissez-le d\'abord');
+            
+            addSystemMessage('🔌 Connexion à ' + id + '...');
+            dataConn = peer.connect(id);
+            setupDataConnection();
+        }
+
+        function setupDataConnection() {
+            if (!dataConn) return;
+            
+            dataConn.on('open', () => {
+                addSystemMessage('✅ Chat connecté avec ' + dataConn.peer);
+                updateChatStatus(true);
+                document.getElementById('sendBtn').disabled = false;
+                resetExpirationTimer();
+            });
+            
+            dataConn.on('data', data => addMessage('Correspondant', data));
+            
+            dataConn.on('close', () => {
+                addSystemMessage('❌ Chat déconnecté');
+                updateChatStatus(false);
+                document.getElementById('sendBtn').disabled = true;
+            });
+        }
+
+        function sendMessage() {
+            if (!isIdValid) {
+                addSystemMessage('⚠️ Votre ID est expiré, rafraîchissez-le');
+                return;
+            }
+            if (dataConn && dataConn.open) {
+                const msg = document.getElementById('messageInput').value.trim();
+                if (!msg) return;
+                dataConn.send(msg);
+                addMessage('Moi', msg);
+                document.getElementById('messageInput').value = '';
+                resetExpirationTimer();
+            } else {
+                addSystemMessage('Chat non connecté');
+            }
+        }
+
+        function updateChatStatus(connected) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (connected) {
+                dot.classList.add('connected');
+                text.innerHTML = 'Chat connecté';
+            } else {
+                dot.classList.remove('connected');
+                text.innerHTML = 'Déconnecté';
+            }
+        }
+
+        // ========== APPEL AUDIO ==========
+        async function startAudioCall() {
+            if (!isIdValid) {
+                addSystemMessage('⚠️ Votre ID est expiré, rafraîchissez-le d\'abord');
+                return;
+            }
+            const targetId = document.getElementById('peerId').value.trim();
+            if (!targetId) return addSystemMessage('Entrez un ID à appeler');
+            if (isInCall) return addSystemMessage('Déjà en appel');
+            
+            try {
+                addSystemMessage('📞 Appel en cours vers ' + targetId + '...');
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                localStream = stream;
+                const call = peer.call(targetId, stream);
+                setupCall(call, stream);
+                resetExpirationTimer();
+            } catch (err) {
+                addSystemMessage('❌ Accès au micro refusé');
+            }
+        }
+
+        function setupCall(call, stream) {
+            mediaCall = call;
+            isInCall = true;
+            
+            document.getElementById('callBtn').style.display = 'none';
+            document.getElementById('endCallBtn').style.display = 'flex';
+            document.getElementById('callStatusText').innerHTML = '🔊 En communication...';
+            addSystemMessage('🔊 Appel audio actif');
+            
+            call.on('stream', remoteStream => {
+                const audio = new Audio();
+                audio.srcObject = remoteStream;
+                audio.play().catch(e => console.log);
+            });
+            
+            call.on('close', () => endAudioCall());
+            call.on('error', () => endAudioCall());
+        }
+
+        function endAudioCall() {
+            if (mediaCall) {
+                mediaCall.close();
+                mediaCall = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            isInCall = false;
+            
+            document.getElementById('callBtn').style.display = 'flex';
+            document.getElementById('endCallBtn').style.display = 'none';
+            document.getElementById('callStatusText').innerHTML = '📞 Prêt';
+            addSystemMessage('📞 Appel terminé');
+        }
+
+        function copyMyId() {
+            const id = document.getElementById('myId').innerText;
+            if (id && id !== 'Connexion...' && id !== 'EXPIRÉ') {
+                navigator.clipboard.writeText(id);
+                addSystemMessage('✅ ID copié !');
+                resetExpirationTimer();
+            } else {
+                addSystemMessage('ID invalide ou expiré');
+            }
+        }
+
+        function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
+
+        // Vérifier auto-login
+        function checkAutoLogin() {
+            const saved = localStorage.getItem('peercall_current_user');
+            if (saved) {
+                let users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
+                if (users[saved]) {
+                    currentUser = saved;
+                    document.getElementById('authScreen').style.display = 'none';
+                    document.getElementById('chatScreen').style.display = 'flex';
+                    document.getElementById('currentUsername').textContent = currentUser;
+                    initPeer();
+                    loadUserHistory();
+                    startInactivityMonitor();
+                }
+            }
+        }
+
+        checkAutoLogin();
+    </script>
+</body>
+</html>
